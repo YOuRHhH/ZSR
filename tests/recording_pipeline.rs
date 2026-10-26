@@ -1,4 +1,5 @@
 //! Worker lifecycle tests; media generation is opt-in and never captures the desktop.
+#![cfg(feature = "legacy-ffmpeg")]
 use std::{path::PathBuf, time::Duration};
 use zsr::{
     recording::{Capture, Event, Request, Session},
@@ -45,9 +46,17 @@ fn capture_continues_without_ui_polling() {
         }
     };
     drop(session);
+    let log = std::fs::read_to_string(saved.with_extension("log")).unwrap();
+    let rows: Vec<serde_json::Value> = log
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    let last = rows.iter().rfind(|r| r["event"] == "progress").unwrap();
+    assert!(last["detail"]["out_time_us"].as_u64().unwrap() >= 4_000_000);
+    assert!(last["detail"]["speed"].as_f64().unwrap() > 0.8);
     let output = std::process::Command::new("ffmpeg")
         .args(["-v", "error", "-i"])
-        .arg(saved)
+        .arg(&saved)
         .args(["-map", "0:v:0", "-f", "framemd5", "-"])
         .output()
         .unwrap();
@@ -90,6 +99,12 @@ fn missing_encoder_reports_failure_without_leaving_empty_files() {
     assert_eq!(
         std::fs::read_dir(directory.path().join("output"))
             .unwrap()
+            .filter(|entry| entry
+                .as_ref()
+                .unwrap()
+                .path()
+                .extension()
+                .is_some_and(|ext| ext == "mp4"))
             .count(),
         0
     );
@@ -159,9 +174,10 @@ fn synthetic_video_is_finalized_and_decodable() {
     );
     assert_eq!(
         std::fs::read_dir(&dir).unwrap().count(),
-        1,
+        2,
         "no partial files left after save"
     );
+    std::fs::remove_file(saved.with_extension("log")).unwrap();
     std::fs::remove_file(saved).unwrap();
     std::fs::remove_dir(dir).unwrap();
 }

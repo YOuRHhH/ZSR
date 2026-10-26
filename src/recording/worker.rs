@@ -43,7 +43,24 @@ pub(super) fn record(
         .create_new(true)
         .open(&partial)
         .map_err(|e| (e.to_string(), None))?;
-    let power = super::power::RecordingPower::new();
+    let log_path = request.settings.destination.join(format!("{stem}.log"));
+    let mut log = super::diagnostics::Diagnostics::create(&log_path).map_err(|e| {
+        let _ = fs::remove_file(&partial);
+        (e.to_string(), None)
+    })?;
+    let backend = screen_input
+        .as_ref()
+        .map(|i| i.graph.split('=').next().unwrap_or("unknown"))
+        .unwrap_or(match request.capture {
+            super::Capture::TestPattern => "testsrc2",
+            super::Capture::Window(_) if cfg!(windows) => "gfxcapture",
+            _ if cfg!(windows) => "gdigrab",
+            _ if cfg!(target_os = "macos") => "avfoundation",
+            _ => "x11grab",
+        });
+    log.write("capture", serde_json::json!({"backend": backend, "fps": request.settings.fps, "resolution": request.settings.resolution, "microphone": request.settings.microphone, "graph": screen_input.as_ref().map(|i| &i.graph), "device": screen_input.as_ref().and_then(|i| i.device.as_ref())}));
+    let encoder = super::encoder::select(&request, &mut log);
+    let power = super::power::RecordingPower::new(&mut log);
     let mut command = platform::command(&request.settings.ffmpeg);
     if let Some(device) = screen_input
         .as_ref()
@@ -57,9 +74,10 @@ pub(super) fn record(
         ]);
     }
     let mut child = match command
-        .args(request.arguments_with_screen_input(
+        .args(request.arguments_with_encoder(
             &partial,
             screen_input.as_ref().map(|input| input.graph.as_str()),
+            encoder,
         ))
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -69,10 +87,12 @@ pub(super) fn record(
         Ok(child) => child,
         Err(e) => {
             let _ = fs::remove_file(&partial);
-            return Err((e.to_string(), None));
+            log.write("spawn_failed", e.to_string());
+            return Err((format!("{e}\nDiagnostics: {}", log_path.display()), None));
         }
     };
-    power.protect_child(&child);
+    log.write("encoder_started", serde_json::json!({"pid": child.id(), "options": encoder.arguments(request.settings.crf, request.settings.fps)}));
+    power.protect_child(&child, &mut log);
     let mut stdin = child.stdin.take();
     let stdout = child.stdout.take().unwrap();
     let stderr = child.stderr.take().unwrap();
@@ -99,6 +119,7 @@ pub(super) fn record(
     let mut forced_error = None;
     let status = loop {
         while let Ok(line) = progress_rx.try_recv() {
+            log.progress(&line);
             if let Some(value) = line.strip_prefix("frame=") {
                 frames = value.trim().parse().unwrap_or(frames);
                 if frames > 0 && !started {
@@ -144,11 +165,13 @@ pub(super) fn record(
     let _ = progress_reader.join();
     // Collect any progress written immediately before process exit.
     for line in progress_rx.try_iter() {
+        log.progress(&line);
         if let Some(value) = line.strip_prefix("frame=") {
             frames = value.trim().parse().unwrap_or(frames);
         }
     }
     let diagnostic = error_reader.join().unwrap_or_default();
+    log.write("exit", serde_json::json!({"status": status.map(|s| s.to_string()), "error": forced_error, "stderr_tail": diagnostic}));
     if forced_error.is_some() || !status.is_some_and(|s| s.success()) || frames == 0 {
         let detail =
             forced_error.unwrap_or_else(|| "FFmpeg exited without a completed recording".into());
@@ -156,7 +179,13 @@ pub(super) fn record(
         if !exists {
             let _ = fs::remove_file(&partial);
         }
-        return Err((format!("{detail}\n{diagnostic}"), exists.then_some(partial)));
+        return Err((
+            format!(
+                "{detail}\n{diagnostic}\nDiagnostics: {}",
+                log_path.display()
+            ),
+            exists.then_some(partial),
+        ));
     }
     // Hard-link promotion is atomic and never overwrites an existing final file.
     // On filesystems without hard links, copy into an exclusively created file.

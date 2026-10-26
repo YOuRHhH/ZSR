@@ -17,31 +17,31 @@ impl WindowInventory {
     pub fn loading(&self) -> bool {
         self.rx.is_some()
     }
-    pub fn selected(&self, id: Option<(u64, u32)>, ffmpeg: &str) -> Option<&AppWindow> {
-        if self.checked != ffmpeg || self.error.is_some() {
+    pub fn selected(&self, id: Option<(u64, u32)>, runtime: &str) -> Option<&AppWindow> {
+        if self.checked != runtime || self.error.is_some() {
             return None;
         }
         self.windows.iter().find(|w| Some(w.identity()) == id)
     }
-    pub fn refresh_due(&mut self, ffmpeg: &str) {
-        if self.checked != ffmpeg
+    pub fn refresh_due(&mut self, runtime: &str) {
+        if self.checked != runtime
             || self
                 .refreshed
                 .is_none_or(|t| t.elapsed() > Duration::from_secs(5))
         {
-            self.refresh(ffmpeg);
+            self.refresh(runtime);
         }
     }
-    pub fn refresh(&mut self, ffmpeg: &str) {
+    pub fn refresh(&mut self, runtime: &str) {
         if self.loading() || !super::supported() {
             return;
         }
-        let ffmpeg = ffmpeg.to_owned();
+        let runtime = runtime.to_owned();
         let (tx, rx) = mpsc::channel();
         self.rx = Some(rx);
         std::thread::spawn(move || {
-            let result = super::check_backend(&ffmpeg).and_then(|_| super::discover());
-            let _ = tx.send((ffmpeg, result));
+            let result = super::check_backend(&runtime).and_then(|_| super::discover());
+            let _ = tx.send((runtime, result));
         });
     }
     pub fn poll(&mut self) {
@@ -84,32 +84,32 @@ mod tests {
             app: "edit".into(),
         };
         let mut inventory = WindowInventory {
-            checked: "ffmpeg".into(),
+            checked: "runtime".into(),
             windows: vec![target.clone()],
             ..Default::default()
         };
         assert!(
             inventory
-                .selected(Some(target.identity()), "ffmpeg")
+                .selected(Some(target.identity()), "runtime")
                 .is_some()
         );
         inventory.windows[0].title = "Renamed document".into();
         assert!(
             inventory
-                .selected(Some(target.identity()), "ffmpeg")
+                .selected(Some(target.identity()), "runtime")
                 .is_some()
         );
         inventory.windows[0].pid = 2;
         assert!(
             inventory
-                .selected(Some(target.identity()), "ffmpeg")
+                .selected(Some(target.identity()), "runtime")
                 .is_none()
         );
-        assert!(inventory.selected(Some((10, 2)), "other-ffmpeg").is_none());
+        assert!(inventory.selected(Some((10, 2)), "other-runtime").is_none());
         inventory.windows.clear();
         assert!(
             inventory
-                .selected(Some(target.identity()), "ffmpeg")
+                .selected(Some(target.identity()), "runtime")
                 .is_none()
         );
     }

@@ -1,3 +1,4 @@
+#![cfg(feature = "legacy-ffmpeg")]
 #![cfg(windows)]
 use std::{
     process::{Child, Stdio},

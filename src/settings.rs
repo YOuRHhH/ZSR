@@ -9,6 +9,14 @@ pub enum Language {
     Chinese,
 }
 
+/// Choose whether enabled audio sources share a track or remain independently editable.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AudioTracks {
+    #[default]
+    Mixed,
+    Separate,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
@@ -16,12 +24,19 @@ pub struct Settings {
     pub destination: PathBuf,
     pub fps: u32,
     pub crf: u32,
+    /// Prefer a verified hardware encoder on Windows, falling back to software.
+    pub hardware_encoding: bool,
     pub resolution: crate::resolution::Resolution,
     pub cursor: bool,
     pub microphone: bool,
+    pub desktop_audio: bool,
+    pub audio_tracks: AudioTracks,
     /// Persistent discovered-device identity; resolved to backend input at start.
     pub audio_device: String,
+    #[cfg(feature = "legacy-ffmpeg")]
     pub ffmpeg: String,
+    /// Directory containing the private libobs runtime and ZSR helper.
+    pub obs_runtime: String,
     pub start_shortcut: String,
     pub stop_shortcut: String,
 }
@@ -44,11 +59,16 @@ impl Default for Settings {
                 .unwrap_or_else(|| PathBuf::from("recordings")),
             fps: 30,
             crf: 23,
+            hardware_encoding: true,
             resolution: Default::default(),
             cursor: true,
             microphone: false,
+            desktop_audio: false,
+            audio_tracks: AudioTracks::Mixed,
             audio_device: String::new(),
+            #[cfg(feature = "legacy-ffmpeg")]
             ffmpeg: "ffmpeg".into(),
+            obs_runtime: crate::obs_backend::default_runtime(),
             start_shortcut: "Ctrl+Shift+F9".into(),
             stop_shortcut: "Ctrl+Shift+F10".into(),
         }
@@ -87,9 +107,6 @@ impl Settings {
         }
         if !(18..=30).contains(&self.crf) {
             return Err("Quality must be between CRF 18 and 30".into());
-        }
-        if self.ffmpeg.trim().is_empty() {
-            return Err("FFmpeg executable is required".into());
         }
         if self.destination.as_os_str().is_empty() {
             return Err("Output directory is required".into());

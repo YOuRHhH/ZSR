@@ -15,7 +15,11 @@ fn main() {
     ] {
         println!("cargo:rerun-if-changed=native/{file}");
     }
+    println!("cargo:rerun-if-changed=native/obs_bridge.c");
+    println!("cargo:rerun-if-changed=native/window_theme.c");
     cc::Build::new()
+        .file("native/window_theme.c")
+        .file("native/obs_bridge.c")
         .file("native/recording_power.c")
         .file("native/desktop_capture.c")
         .file("native/display.c")

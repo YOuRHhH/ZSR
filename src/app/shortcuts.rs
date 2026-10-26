@@ -97,7 +97,7 @@ impl App {
                 && !self.active()
                 && !self.checking
                 && self.picker.is_none()
-                && self.probed_ffmpeg == self.settings.ffmpeg
+                && self.probed_runtime == self.settings.obs_runtime
                 && self
                     .capabilities
                     .as_ref()

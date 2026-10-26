@@ -57,6 +57,13 @@ impl App {
                     }
                 });
         });
+        if cfg!(windows) {
+            ui.checkbox(
+                &mut self.settings.hardware_encoding,
+                tr(lang, "hardware_encoding"),
+            );
+            ui.small(tr(lang, "hardware_encoding_hint"));
+        }
         ui.label(tr(lang, "folder"));
         let mut path = self.settings.destination.to_string_lossy().into_owned();
         if ui.text_edit_singleline(&mut path).changed() {
@@ -75,9 +82,9 @@ impl App {
     /// Configure and recheck the recording backend from advanced settings.
     pub(super) fn backend_preferences(&mut self, ui: &mut egui::Ui) {
         let lang = self.settings.language;
-        ui.label(tr(lang, "ffmpeg"));
-        ui.text_edit_singleline(&mut self.settings.ffmpeg);
-        ui.small(tr(lang, "ffmpeg_hint"));
+        ui.label(tr(lang, "obs_runtime"));
+        ui.text_edit_singleline(&mut self.settings.obs_runtime);
+        ui.small(tr(lang, "obs_runtime_hint"));
         if ui
             .add_enabled(!self.checking, egui::Button::new(tr(lang, "check")))
             .clicked()

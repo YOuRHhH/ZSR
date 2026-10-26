@@ -12,6 +12,16 @@ impl Request {
         output: &Path,
         screen_input: Option<&str>,
     ) -> Vec<String> {
+        self.arguments_with_encoder(output, screen_input, super::encoder::Encoder::Software)
+    }
+
+    /// Build the same capture pipeline with a preflight-tested encoder.
+    pub(super) fn arguments_with_encoder(
+        &self,
+        output: &Path,
+        screen_input: Option<&str>,
+        encoder: super::encoder::Encoder,
+    ) -> Vec<String> {
         let s = &self.settings;
         let mut args = vec![
             "-hide_banner".into(),
@@ -23,20 +33,21 @@ impl Request {
             args.extend(items.iter().map(|s| s.to_string()));
         };
         let fps = s.fps.to_string();
-        match &self.capture {
-            Capture::Window(window) => {
-                let cursor = if s.cursor { "1" } else { "0" };
-                if cfg!(windows) {
-                    add(&[
-                        "-f",
-                        "lavfi",
-                        "-i",
-                        &format!(
-                            "gfxcapture=hwnd={}:capture_cursor={cursor}:capture_border=0:max_framerate={fps}:output_fmt=bgra,hwdownload,format=bgra",
-                            window.id
-                        ),
-                    ]);
-                } else {
+        // A compositor source belongs in the output graph. Treating it as a lavfi
+        // demuxer lets blocking DirectShow reads stall capture and manufacture CFR duplicates.
+        let compositor = self.compositor_graph(screen_input);
+        if let Some(graph) = &compositor {
+            add(&[
+                "-filter_complex",
+                &format!(
+                    "{graph},setpts=PTS-STARTPTS,{}[zsr_video]",
+                    self.video_filter()
+                ),
+            ]);
+        } else {
+            match &self.capture {
+                Capture::Window(window) => {
+                    let cursor = if s.cursor { "1" } else { "0" };
                     add(&[
                         "-f",
                         "x11grab",
@@ -50,78 +61,74 @@ impl Request {
                         &std::env::var("DISPLAY").unwrap_or_else(|_| ":0.0".into()),
                     ]);
                 }
-            }
-            Capture::TestPattern => {
-                add(&["-re", "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=30"])
-            }
-            Capture::Screen { source, region } => {
-                let d = source.display;
-                let r = region.unwrap_or(Region {
-                    x: 0,
-                    y: 0,
-                    width: d.width,
-                    height: d.height,
-                });
-                let x = (i64::from(d.x) + i64::from(r.x)).to_string();
-                let y = (i64::from(d.y) + i64::from(r.y)).to_string();
-                let size = format!("{}x{}", r.width, r.height);
-                let cursor = if s.cursor { "1" } else { "0" };
-                if cfg!(windows)
-                    && let Some(input) = screen_input
-                {
-                    add(&["-f", "lavfi", "-i", input]);
-                } else if cfg!(windows) {
-                    add(&[
-                        "-f",
-                        "gdigrab",
-                        "-framerate",
-                        &fps,
-                        "-draw_mouse",
-                        cursor,
-                        "-offset_x",
-                        &x,
-                        "-offset_y",
-                        &y,
-                        "-video_size",
-                        &size,
-                        "-i",
-                        "desktop",
-                    ]);
-                } else if cfg!(target_os = "macos") {
-                    let input = format!(
-                        "{}:{}",
-                        source.av_index.unwrap_or(0),
-                        if s.microphone {
-                            s.audio_device.as_str()
-                        } else {
-                            "none"
-                        }
-                    );
-                    add(&[
-                        "-f",
-                        "avfoundation",
-                        "-capture_cursor",
-                        cursor,
-                        "-framerate",
-                        &fps,
-                        "-i",
-                        &input,
-                    ]);
-                } else {
-                    let display = std::env::var("DISPLAY").unwrap_or_else(|_| ":0.0".into());
-                    let input = format!("{display}+{x},{y}");
-                    add(&[
-                        "-f",
-                        "x11grab",
-                        "-framerate",
-                        &fps,
-                        "-draw_mouse",
-                        cursor,
-                        "-video_size",
-                        &size,
-                        "-i",
-                        &input,
-                    ]);
+                Capture::TestPattern => {
+                    add(&["-re", "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=30"])
+                }
+                Capture::Screen { source, region } => {
+                    let d = source.display;
+                    let r = region.unwrap_or(Region {
+                        x: 0,
+                        y: 0,
+                        width: d.width,
+                        height: d.height,
+                    });
+                    let x = (i64::from(d.x) + i64::from(r.x)).to_string();
+                    let y = (i64::from(d.y) + i64::from(r.y)).to_string();
+                    let size = format!("{}x{}", r.width, r.height);
+                    let cursor = if s.cursor { "1" } else { "0" };
+                    if cfg!(windows) {
+                        add(&[
+                            "-f",
+                            "gdigrab",
+                            "-framerate",
+                            &fps,
+                            "-draw_mouse",
+                            cursor,
+                            "-offset_x",
+                            &x,
+                            "-offset_y",
+                            &y,
+                            "-video_size",
+                            &size,
+                            "-i",
+                            "desktop",
+                        ]);
+                    } else if cfg!(target_os = "macos") {
+                        let input = format!(
+                            "{}:{}",
+                            source.av_index.unwrap_or(0),
+                            if s.microphone {
+                                s.audio_device.as_str()
+                            } else {
+                                "none"
+                            }
+                        );
+                        add(&[
+                            "-f",
+                            "avfoundation",
+                            "-capture_cursor",
+                            cursor,
+                            "-framerate",
+                            &fps,
+                            "-i",
+                            &input,
+                        ]);
+                    } else {
+                        let display = std::env::var("DISPLAY").unwrap_or_else(|_| ":0.0".into());
+                        let input = format!("{display}+{x},{y}");
+                        add(&[
+                            "-f",
+                            "x11grab",
+                            "-framerate",
+                            &fps,
+                            "-draw_mouse",
+                            cursor,
+                            "-video_size",
+                            &size,
+                            "-i",
+                            &input,
+                        ]);
+                    }
                 }
             }
         }
@@ -135,6 +142,9 @@ impl Request {
                     "512",
                     "-f",
                     "dshow",
+                    // Keep audio delivery prompt without depending on the device's large default buffer.
+                    "-audio_buffer_size",
+                    "50",
                     "-i",
                     &format!("audio={}", s.audio_device),
                 ]);
@@ -149,11 +159,18 @@ impl Request {
                 ]);
             }
         }
-        add(&["-map", "0:v:0"]);
+        add(&[
+            "-map",
+            if compositor.is_some() {
+                "[zsr_video]"
+            } else {
+                "0:v:0"
+            },
+        ]);
         if s.microphone && !matches!(self.capture, Capture::TestPattern) {
             add(&[
                 "-map",
-                if cfg!(target_os = "macos") {
+                if cfg!(target_os = "macos") || compositor.is_some() {
                     "0:a:0"
                 } else {
                     "1:a:0"
@@ -168,17 +185,15 @@ impl Request {
         } else {
             add(&["-an"]);
         }
+        if compositor.is_none() {
+            add(&["-vf", &self.video_filter()]);
+        }
+        add(&encoder
+            .arguments(s.crf, s.fps)
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>());
         add(&[
-            "-vf",
-            &self.video_filter(),
-            "-c:v",
-            "libx264",
-            "-preset",
-            "veryfast",
-            "-crf",
-            &s.crf.to_string(),
-            "-pix_fmt",
-            "yuv420p",
             "-r",
             &fps,
             "-g",
@@ -196,6 +211,24 @@ impl Request {
         args
     }
 
+    /// Return a Windows compositor source without creating a competing lavfi input device.
+    fn compositor_graph(&self, screen_input: Option<&str>) -> Option<String> {
+        if !cfg!(windows) {
+            return None;
+        }
+        match &self.capture {
+            Capture::Window(window) => Some(format!(
+                "gfxcapture=hwnd={}:capture_cursor={}:capture_border=0:max_framerate={}:output_fmt=bgra,hwdownload,format=bgra",
+                window.id,
+                u8::from(self.settings.cursor),
+                self.settings.fps
+            )),
+            Capture::Screen { .. } => screen_input.map(str::to_owned),
+            Capture::TestPattern => None,
+        }
+    }
+
+    /// Apply the requested output size after any platform-specific source crop.
     fn video_filter(&self) -> String {
         let scale = self.settings.resolution.video_filter();
         if cfg!(target_os = "macos")

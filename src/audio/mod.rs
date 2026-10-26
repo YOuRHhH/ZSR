@@ -1,9 +1,10 @@
 //! Enumerate inputs using the same backend that will actually record them.
-use crate::platform::{command, output};
-use std::time::Duration;
+#[cfg(test)]
 mod avfoundation;
+#[cfg(test)]
 mod dshow;
 mod manager;
+#[cfg(test)]
 mod pulse;
 pub use manager::AudioDevices;
 #[cfg(test)]
@@ -17,57 +18,22 @@ pub struct AudioDevice {
     pub input: String,
 }
 
-pub fn discover(ffmpeg: &str) -> Result<Vec<AudioDevice>, String> {
-    let timeout = Duration::from_secs(8);
-    if cfg!(windows) {
-        let text = output(
-            command(ffmpeg).args([
-                "-hide_banner",
-                "-list_devices",
-                "true",
-                "-f",
-                "dshow",
-                "-i",
-                "dummy",
-            ]),
-            timeout,
-        )?;
-        // FFmpeg intentionally exits with failure after listing devices.
-        if text.contains("Unknown input format") || text.contains("Unrecognized option") {
-            return Err(text);
-        }
-        if !text.contains("(audio)") && !text.contains("(video)") && !text.contains("DirectShow") {
-            return Err(text);
-        }
-        Ok(dshow::parse(&text))
-    } else if cfg!(target_os = "macos") {
-        let text = output(
-            command(ffmpeg).args([
-                "-hide_banner",
-                "-f",
-                "avfoundation",
-                "-list_devices",
-                "true",
-                "-i",
-                "",
-            ]),
-            timeout,
-        )?;
-        if !text.contains("AVFoundation audio devices:") {
-            return Err(text);
-        }
-        Ok(avfoundation::parse(&text))
-    } else if cfg!(target_os = "linux") {
-        // pactl also works with PipeWire's PulseAudio compatibility server.
-        let text = output(
-            command("pactl").args(["--format=json", "list", "sources"]),
-            timeout,
-        )
-        .map_err(|e| format!("Cannot enumerate PulseAudio inputs with pactl: {e}"))?;
-        pulse::parse(&text)
-    } else {
-        Err("Audio device discovery is unavailable on this platform".into())
-    }
+/// Enumerate microphones using the exact OBS plugin that records them.
+pub fn discover(runtime: &str) -> Result<Vec<AudioDevice>, String> {
+    let result = crate::obs_backend::probe(runtime)?;
+    Ok(result["audio"]
+        .as_array()
+        .ok_or("OBS returned no audio device list")?
+        .iter()
+        .filter_map(|d| {
+            let id = d["id"].as_str()?.to_owned();
+            Some(AudioDevice {
+                id: id.clone(),
+                name: d["name"].as_str()?.to_owned(),
+                input: id,
+            })
+        })
+        .collect())
 }
 
 /// Match persisted identities; legacy manually entered names/indices remain usable

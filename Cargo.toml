@@ -1,5 +1,6 @@
 [package]
 name = "zsr"
+default-run = "ZSR"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.88"
@@ -12,9 +13,16 @@ name = "ZSR"
 path = "src/main.rs"
 
 [features]
+# Archived command builder retained only for historical regression tests.
+legacy-ffmpeg = []
 ui-smoke = ["dep:image"]
 
+[[bin]]
+name = "zsr-obs"
+path = "src/obs/main.rs"
+
 [dependencies]
+libloading = "0.8"
 eframe = { version = "=0.33.3", default-features = false, features = ["accesskit", "default_fonts", "glow", "wayland", "x11"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -25,6 +33,7 @@ rfd = "0.15"
 tempfile = "3"
 image = { version = "0.25", default-features = false, features = ["png"], optional = true }
 global-hotkey = "0.7"
+raw-window-handle = "0.6"
 
 [build-dependencies]
 cc = "1"

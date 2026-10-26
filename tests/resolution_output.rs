@@ -1,3 +1,4 @@
+#![cfg(feature = "legacy-ffmpeg")]
 use zsr::{
     recording::{Capture, Request},
     resolution::Resolution,

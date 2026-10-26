@@ -1,0 +1,81 @@
+name: Package Windows and Linux
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: package-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    name: ${{ matrix.platform }} Full and Lite
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            platform: windows
+          - os: ubuntu-24.04
+            platform: linux
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: package-${{ matrix.platform }}
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libxkbcommon-dev libwayland-dev libegl1-mesa-dev libgl1-mesa-dev wmctrl xvfb pulseaudio
+      - name: Install Inno Setup
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: choco install innosetup --yes --no-progress
+      - name: Check formatting and scripts
+        run: |
+          cargo fmt --all -- --check
+          python -m unittest discover -s tests -p "test_*.py"
+      - name: Rust checks
+        run: |
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo test --locked --all-targets
+      - name: Build Full and Lite packages
+        run: python scripts/package.py
+      - name: Verify Windows runtime
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python scripts/stage_obs.py --obs-dir target/obs-runtime/32.2.2 --helper target/release/zsr-obs.exe --output target/obs-runtime/32.2.2
+          $root = (Resolve-Path target/obs-runtime/32.2.2).Path
+          & "$root/bin/64bit/zsr-obs.exe" $root probe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify Linux package and OBS runtime
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get install -y ./dist/linux/*Full.deb
+          python scripts/stage_obs.py --platform linux --obs-dir target/obs-runtime/32.2.2-linux --helper target/release/zsr-obs --output target/obs-runtime/32.2.2-linux
+          root="$PWD/target/obs-runtime/32.2.2-linux"
+          LD_LIBRARY_PATH="$root/lib" xvfb-run -a "$root/bin/zsr-obs" "$root" probe
+          for file in dist/linux/*.deb; do dpkg-deb --info "$file"; done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ZSR-${{ matrix.platform }}-Full-Lite
+          path: dist/${{ matrix.platform }}/
+          if-no-files-found: error
+          retention-days: 14

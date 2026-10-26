@@ -1,152 +1,116 @@
 # ZSR
 
-A Rust desktop screen recorder with a native C display adapter and a Chinese/English interface. This repository contains the first implementation milestone, not a production-ready release.
+ZSR is a Rust desktop screen recorder with C platform adapters and an English/Chinese interface. Recording now uses **OBS libobs**, through the isolated `zsr-obs` helper. ZSR no longer runs the FFmpeg command-line application for capture, encoding or device discovery. OBS itself includes codec libraries, including FFmpeg libraries.
 
-## Run
+## Windows development
 
-Install a Rust toolchain (1.88 or newer), a platform C compiler, and an FFmpeg build with `libx264` and the relevant capture input enabled for development. Full packages include a private FFmpeg runtime; Lite packages use an external FFmpeg installation. ZSR does not download FFmpeg automatically.
+Requires Rust 1.88+, MSVC Desktop development with C++, Python 3.11+, and a matching OBS runtime. The tested runtime is official OBS Studio **32.2.2 x64**; the helper checks the libobs major version before use.
 
-```sh
-cargo run --locked
+```powershell
+# Download and verify the official OBS runtime once.
+py scripts/fetch_obs_windows.py
+
+# Build BOTH the UI and the native recording helper.
+cargo build --bins
+py scripts/stage_obs.py --obs-dir target/obs-runtime/32.2.2 --helper target/debug/zsr-obs.exe --output target/obs-runtime/32.2.2
+cargo run --bin ZSR
 ```
 
-Select a display or region, choose an output directory, and press **Start recording**. Selecting **Region** opens an on-screen frame on the chosen display. Drag outside the frame to draw a new area, drag inside to move it, or drag a corner to resize. Confirm with **Use area** / Enter, or cancel with Escape. **Select area on screen…** reopens the picker; the selection controls close after confirmation, and a click-through border remains around the chosen area before and during recording. Press **Stop and save** to finalize the MP4. The language selector switches between **English** and **简体中文** immediately; preferences are saved in the OS application configuration directory. Settings and device identifiers should be treated as local user data.
+Close a running ZSR before rebuilding its executable. Windows cannot replace an executable that is still running. An isolated build is also possible:
 
-- **Windows:** Install MSVC Build Tools with the Desktop development with C++ workload. FFmpeg needs `gdigrab`; microphone inputs are discovered automatically through DirectShow.
-- **macOS:** Install Xcode Command Line Tools. FFmpeg needs `avfoundation`. Grant screen-recording permission to the launched application or terminal as required by macOS, then recheck setup. Microphone inputs are discovered automatically through AVFoundation and require microphone permission. The permission behavior of a packaged, signed app still needs qualification.
-- **Linux:** Install a C compiler and desktop development dependencies. For Debian/Ubuntu, start with `build-essential pkg-config libxkbcommon-dev libwayland-dev libegl1-mesa-dev libgl1-mesa-dev`. Recording currently requires an X11 session and an FFmpeg build with `x11grab`; microphone discovery uses `pactl --format=json list sources` (install `pulseaudio-utils` on Debian/Ubuntu) with PulseAudio or PipeWire’s PulseAudio compatibility server. Wayland capture is explicitly unavailable in this milestone.
+```powershell
+cargo build --bins --target-dir target/region-verify
+py scripts/stage_obs.py --obs-dir target/obs-runtime/32.2.2 --helper target/region-verify/debug/zsr-obs.exe --output target/obs-runtime/32.2.2
+.\target\region-verify\debug\ZSR.exe
+```
 
-Select **Application window** to record a specific open window. Choose a target from the automatically refreshed list and press **Start recording**. Targets are identified by window ID and process ID, so duplicate or changing titles do not switch the target. Windows requires an FFmpeg build with the `gfxcapture` filter and its HWND option (Windows Graphics Capture). Linux/X11 requires `wmctrl` for discovery and FFmpeg `x11grab`. macOS and Wayland window capture are not yet implemented and show an explanation. Keep the target visible, open, and at a fixed size; protected content may be blank. This records one window, not all windows of an application or its system audio.
+Re-stage the helper after changing its code. You can override runtime discovery with `ZSR_OBS_RUNTIME`, or choose **Settings → Advanced → OBS runtime folder**. A bundled `obs` directory beside ZSR takes precedence over the development runtime when no explicit override is supplied.
 
-Put `ffmpeg` on PATH or enter its full executable path in the app and click **Recheck setup**. The recording source picker is populated only after display discovery and FFmpeg checks succeed. Microphones appear automatically in the audio selector. Enable **Record microphone**, then choose a detected input. The list loads at startup, supports manual refresh, and refreshes every 15 seconds while microphone capture is enabled and the recorder is idle. A saved device that disappears must be explicitly replaced; ZSR does not silently select another microphone.
+**从 FFmpeg 迁移后，请重新选择麦克风。** OBS 使用系统原生设备标识，与原来的 DirectShow 标识不同。软件不会擅自替换失效的设备选择。
 
-For Chinese glyphs, ZSR loads a system CJK font: Microsoft YaHei on Windows, PingFang or Heiti on macOS, or Noto Sans CJK/WenQuanYi Micro Hei at common Linux paths. Install one of these fonts if Chinese characters do not display. Fonts are not redistributed with this project. Initial language uses `LC_ALL`, `LC_MESSAGES`, or `LANG` when set; otherwise it defaults to English until changed in the UI.
+## Recording
 
-Use **Recordings / 录制文件** in the header to browse up to 200 completed ZSR recordings in the current save folder, sorted by modification time. The list shows filename, modification date, and file size, with actions to open a video or the folder. It refreshes when opened, after a recording is saved, and when the save directory changes; use **Refresh list** for external changes. In-progress `.partial.mp4` files are excluded.
+- Choose **Display**, **Region**, or **Application window**, then **Start recording**.
+- Region selection shows your desktop, temporarily minimizes ZSR, and restores it after confirmation. The confirmed border stays visible.
+- Enable desktop audio to capture the system default playback device, and/or select a microphone from the automatically detected list. Windows audio uses OBS WASAPI loopback and microphone capture.
+- Choose **Mixed single track** to combine enabled sources, or **Separate audio tracks** for desktop audio on track 1 and microphone on track 2 in the same MP4. With only one source enabled, one track is saved. Most players play one track at a time; choose mixed mode for playback of both together. Desktop capture starts disabled so existing users do not unexpectedly record system sound.
+- Output sizes include Original, 480p, 720p, 1080p, 1440p and 2160p, at 30 or 60 fps. Content fits within the output without stretching.
+- Windows tries OBS AMF/NVENC/QSV hardware H.264 encoders and falls back to x264. The settings checkbox can force software encoding.
+- **Stop and save** finalizes a native OBS hybrid MP4. Interrupted output is retained as `.partial.mp4`; it is not presented as a successful recording.
+- The **Recordings** list opens completed files or their folder. Language, output preferences and press-to-enter global shortcuts remain in Settings.
+- Native OBS logs are saved beside recordings. They stay local and may contain device names and paths.
 
-## Implemented
+OBS window capture uses its title/class/executable matching scheme. ZSR validates the selected window and rejects ambiguous title/executable choices; keep the target open and visible. Pause/resume and Wayland portal capture remain unimplemented. With both audio sources disabled, OBS's native MP4 output currently contains a silent AAC track.
 
-- Local display recording and visual region selection with a draggable, resizable frame. Windows/X11 capture the selected coordinates directly; macOS crops the selected display input.
-- Original, 480p, 720p, 1080p, 1440p, or 4K output resolution; 30/60 FPS; three compression quality presets; and cursor inclusion. Resolution presets preserve proportions, add black bars when needed, and upscale smaller sources.
-- Automatically discovered microphone inputs with friendly names, persisted selections, refresh, and unavailable-device handling.
-- H.264 MP4 output with fragmented intermediate files, unique names, and collision-safe finalization.
-- A worker thread for capture, progress updates, stop/finalization, and retained incomplete files on recording failures.
-- Immediate English/Simplified Chinese switching, matching translation catalogs, persistent preferences, and system CJK font fallback.
-- Output-file opening, folder selection, and setup diagnostics.
+## Build and package
 
-System audio, visual previews, macOS/Wayland window capture, pause/resume, hardware encoding, disk-space monitoring, Wayland portal capture, and automatic recovery are still pending. Fragmented MP4 may preserve playable data after interruption, but recovery is not guaranteed or automated. Linux currently exposes the complete default X11 screen as a single source, which may include several physical displays.
+Full packages include the OBS runtime and helper. Lite packages include the helper and require a compatible external OBS runtime configured in Settings. These editions replace the former bundled/unbundled FFmpeg editions. Runtime licenses and source references are retained in the Full package.
 
-## Build and verify
+### One-command Windows / Linux packaging
+
+Run the same script on the platform you want to package:
+
+```powershell
+# Windows x64 (Rust/MSVC, Python 3.11+, Inno Setup 6 required)
+py scripts/package.py
+```
 
 ```sh
-cargo fmt --all -- --check
-cargo clippy --all-targets -- -D warnings
+# Ubuntu 24.04 x86_64 (Rust, Python 3.11+, native build dependencies required)
+sudo apt-get update
+sudo apt-get install -y build-essential pkg-config libxkbcommon-dev libwayland-dev libegl1-mesa-dev libgl1-mesa-dev
+python3 scripts/package.py
+```
+
+The command downloads and SHA-256-verifies OBS 32.2.2, builds both Rust binaries in release mode, and creates **Full and Lite** packages in `dist/windows/` or `dist/linux/`. It never installs the generated packages or changes system dependencies automatically. Optional arguments: `--obs-dir PATH`, `--output PATH`, `--iscc PATH` (Windows), and `--skip-build` for existing release binaries. `CARGO_TARGET_DIR` is respected. This is native packaging, not cross-compilation: a Windows invocation does not also build a Linux binary.
+
+The automatic Linux runtime targets **Ubuntu 24.04 x86_64**. Full DEBs bundle OBS and declare its required system libraries; install using `sudo apt install ./dist/linux/*Full.deb` so apt resolves those dependencies. Lite omits OBS: prepare a compatible normalized runtime using `python3 scripts/fetch_obs_linux.py`, configure that folder in ZSR, and install its dependencies. A distribution's arbitrary `obs-studio` version is not guaranteed compatible. Other Linux distributions/architectures require a matching `--obs-dir` runtime containing `linux-dependencies.txt` for DEB dependency metadata.
+
+### GitHub Actions
+
+[Packaging workflow](.github/workflows/package.yml) runs Windows and Ubuntu jobs on pushes to `main`, `v*` tags, pull requests, or manual **Actions → Package Windows and Linux → Run workflow**. Each runner uses `python scripts/package.py`. Download **ZSR-windows-Full-Lite** and **ZSR-linux-Full-Lite** from the completed run's Artifacts section (retained for 14 days). Packages are uploaded as workflow artifacts; this workflow does not create a public GitHub Release or sign installers. Linux CI installs the Full package and checks OBS startup under Xvfb; this does not replace testing capture on a real desktop.
+
+### Windows (direct packager)
+
+Install Inno Setup 6 on the **build machine**, then:
+
+```powershell
+cargo build --release --bins
+py scripts/package_windows.py --obs-dir target/obs-runtime/32.2.2
+# Optional compiler override:
+py scripts/package_windows.py --obs-dir target/obs-runtime/32.2.2 --iscc "C:\Path\To\Inno Setup 6\ISCC.exe"
+```
+
+Outputs: `dist/windows/ZSR-0.1.0-Windows-x64-Full-Setup.exe` and `...-Lite-Setup.exe`. `cargo build` alone does not create installers. Existing installers in `dist` are not automatically rebuilt when source changes.
+
+### macOS / Linux
+
+Build on the destination OS. Linux currently requires X11. Install a C compiler and desktop development dependencies; on Debian/Ubuntu these include `build-essential pkg-config libxkbcommon-dev libwayland-dev libegl1-mesa-dev libgl1-mesa-dev`. Window discovery additionally uses `wmctrl`.
+
+The new OBS backend includes platform source/audio mappings, but **macOS and Linux runtime packaging and capture have not been verified on native machines**. Their packaging scripts expect a relocatable OBS SDK/runtime layout: `lib/libobs.so` (Linux) or `lib/libobs.dylib` (macOS), graphics backend libraries in `lib`, capture/encoder/output plugins in `lib/obs-plugins`, and data in `data/libobs` and `data/obs-plugins`. A stock macOS OBS `.app` is not directly this layout; prepare the matching runtime first.
+
+```sh
+cargo build --release --bins
+# macOS: requires hdiutil and a correctly relocated/signed OBS runtime.
+python3 scripts/package_unix.py --platform macos --obs-dir /path/to/obs-runtime
+# Linux: requires dpkg-deb and a runtime built for the target distribution.
+python3 scripts/package_unix.py --platform linux --obs-dir /path/to/obs-runtime
+```
+
+输出在 `dist/`。请在对应系统构建和验证；Windows 上的成功测试不代表 macOS/Linux 已通过验证。
+
+## Verification
+
+```powershell
 cargo test --all-targets
-cargo test --test recording_pipeline -- --ignored
-cargo build --release --locked
+cargo clippy --all-targets -- -D warnings
+py -m unittest discover -s tests -p "test_*.py"
+# Opt-in: records display/audio and plays a quiet desktop test tone on Windows.
+cargo test --test obs_recording -- --ignored --nocapture
+# Opt-in: opens and records a disposable animated window.
+cargo test --test obs_window -- --ignored --nocapture
 ```
 
-The opt-in integration test requires `ffmpeg` and `ffprobe` on PATH. It records a generated test pattern, stops the same worker used by the UI, verifies H.264 metadata, decodes the result, and removes its own temporary output. It never captures the desktop or microphone. Unit tests cover translation parity, input validation, capture-coordinate handling, device parsing, and shell-free argument construction.
+The media integration test uses `ffprobe`/`ffmpeg` only to verify generated files; these tools are not needed by ZSR users. Historical FFmpeg command tests are available only with the `legacy-ffmpeg` feature; this feature does not select the old recording engine.
 
-The CI matrix builds and runs unit tests on Windows, macOS, and Linux. CI compilation does not qualify live capture on those platforms. Real desktop permissions, scaled multi-monitor setups, audio synchronization, resource use, and packaged releases still require platform testing. See [implementation status](docs/implementation.md) and [requirements](docs/requirements.md).
-
-## Package Full and Lite editions
-
-打包命令：[Windows](#windows-powershell) · [macOS](#macos) · [Linux](#linux-debianubuntu)。请在项目根目录执行；每个平台的打包脚本都会同时生成 **Full（内置 FFmpeg）** 和 **Lite（不内置 FFmpeg）** 两个版本。
-
-Run commands from the repository root. `cargo build --release` builds the executable only; the packaging script produces **both Full and Lite** packages. Full includes FFmpeg and automatically uses it. Lite excludes FFmpeg and needs an external installation. Both editions contain the same ZSR application.
-
-Packaging requires Python 3.11+ and a complete FFmpeg distribution for the target OS and architecture, including its license notices, runtime libraries, and redistribution materials. Supply the distribution root containing `bin/ffmpeg.exe` (Windows) or `bin/ffmpeg` (macOS/Linux). The scripts omit unused `ffplay` and `ffprobe` companion programs while retaining FFmpeg and its supporting files.
-
-### Windows (PowerShell)
-
-Install Inno Setup on the build machine if it is missing:
-
-```powershell
-winget install --id JRSoftware.InnoSetup --exact --scope user
-```
-
-Build and package:
-
-```powershell
-cargo build --release --locked
-py scripts/package_windows.py
-```
-
-The script discovers FFmpeg from PATH and Inno Setup from standard installation locations. To supply paths explicitly, replace the example paths below with actual locations on your machine:
-
-```powershell
-py scripts/package_windows.py --ffmpeg-dir "D:\dependencies\ffmpeg"
-# Optional: explicitly specify the Inno Setup compiler
-py scripts/package_windows.py --ffmpeg-dir "D:\dependencies\ffmpeg" --iscc "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-# Show discovered inputs without compiling installers
-py scripts/package_windows.py --check
-```
-
-Outputs in `dist/windows/`:
-
-- `ZSR-<version>-Windows-x64-Full-Setup.exe`
-- `ZSR-<version>-Windows-x64-Lite-Setup.exe`
-
-Python and Inno Setup are build tools; users of the installers do not need them. See [Windows installer details](docs/windows-installers.md).
-
-### macOS
-
-在 **Mac 上执行**，需要 Rust、Python 3.11+、Xcode Command Line Tools 和 `hdiutil`。将下方 `/path/to/ffmpeg-distribution` 替换为真实的 FFmpeg 发行目录；目录内需包含 `bin/ffmpeg`、依赖库和许可证文件，且架构需与 ZSR 一致。
-
-Run on macOS with Xcode Command Line Tools and `hdiutil`. Replace `/path/to/ffmpeg-distribution` with the actual distribution root:
-
-```sh
-cargo build --release --locked
-python3 scripts/package_unix.py --platform macos --ffmpeg-dir /path/to/ffmpeg-distribution
-```
-
-一次执行生成 Full 和 Lite 两个 `.dmg` 安装镜像，保存在 `dist/`。
-
-Outputs in `dist/`:
-
-- `ZSR-<version>-macOS-<arch>-Full.dmg`
-- `ZSR-<version>-macOS-<arch>-Lite.dmg`
-
-### Linux (Debian/Ubuntu)
-
-在 **Linux 上执行**，需要 Rust、Python 3.11+、上文列出的开发依赖和 `dpkg-deb`。将下方 `/path/to/ffmpeg-distribution` 替换为真实的 FFmpeg 发行目录；目录内需包含 `bin/ffmpeg`、依赖库和许可证文件，且架构需与 ZSR 一致。
-
-Run on Linux with the build dependencies listed above and `dpkg-deb`. Replace `/path/to/ffmpeg-distribution` with the actual distribution root:
-
-```sh
-cargo build --release --locked
-python3 scripts/package_unix.py --platform linux --ffmpeg-dir /path/to/ffmpeg-distribution
-```
-
-一次执行生成 Full 和 Lite 两个 `.deb` 安装包，保存在 `dist/`。
-
-Outputs in `dist/`:
-
-- `ZSR-<version>-Linux-<arch>-Full.deb`
-- `ZSR-<version>-Linux-<arch>-Lite.deb`
-
-版本号读取自 `Cargo.toml`，`<arch>` 为 `amd64` 或 `arm64`。这些脚本不能在 Windows 上直接生成 macOS/Linux 安装包；需要在对应系统上构建。macOS 包目前未签名、未公证；macOS/Linux 打包流程尚待在对应系统上验证。
-
-Version comes from `Cargo.toml`; Unix architecture labels are `amd64` or `arm64`. Build on the target OS with matching binaries: these scripts do not cross-compile. macOS packages are unsigned/unnotarized, and native macOS/Linux packages still require platform validation. See [macOS/Linux packaging details](docs/unix-installers.md).
-
-## Structure
-
-| Path | Responsibility |
-| --- | --- |
-| `src/app/` | Application controller, separate UI panels, appearance, and preferences |
-| `src/audio/` | Shared device inventory, asynchronous discovery, and platform-specific parsers |
-| `src/recording/` | Recording API, validation, command construction, session lifecycle, and worker |
-| `src/platform.rs` | Capability checks, native display boundary, subprocess setup |
-| `src/settings.rs` | Preferences and validation |
-| `src/i18n.rs`, `locales/` | Translation lookup and English/Chinese catalogs |
-| `native/` | C ABI display discovery using platform system APIs |
-| `tests/` | Opt-in synthetic media pipeline verification |
-
-Capture commands are passed as argument arrays without a shell. No network service, account, or telemetry is required. FFmpeg errors can include device identifiers and local paths; review diagnostics before sharing.
-
-The `obs-studio/` source is available and its monitor capture and preview-cropping implementation has been reviewed; see [OBS reference review](docs/obs-reference.md). No OBS code was copied or linked. Before shipping installers, settle the project license and review the licenses of the selected media dependencies and any bundled binaries.
-
-Reference documentation: [eframe 0.33.3](https://docs.rs/eframe/0.33.3/eframe/), [FFmpeg capture devices](https://ffmpeg.org/ffmpeg-devices.html).
-
-See [module boundaries](docs/architecture.md) for responsibilities and extension points.
+Architecture and validation: [OBS backend](docs/obs-backend.md). The local `obs-studio` reference checkout and downloaded runtime/build outputs are excluded from Git. Official runtime/source: [OBS Studio 32.2.2](https://github.com/obsproject/obs-studio/releases/tag/32.2.2).

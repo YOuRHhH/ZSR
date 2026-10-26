@@ -7,6 +7,7 @@ mod region;
 mod shortcuts;
 #[cfg(feature = "ui-smoke")]
 mod smoke;
+mod title_bar;
 mod ui;
 use eframe::egui;
 use std::{
@@ -42,6 +43,7 @@ enum CaptureMode {
 }
 
 pub struct App {
+    custom_title_bar: bool,
     shortcuts: shortcuts::Shortcuts,
     settings: Settings,
     settings_open: bool,
@@ -49,7 +51,7 @@ pub struct App {
     recordings: recordings::Recordings,
     capabilities: Option<Capabilities>,
     checking: bool,
-    probed_ffmpeg: String,
+    probed_runtime: String,
     audio: AudioDevices,
     tx: Sender<Background>,
     rx: Receiver<Background>,
@@ -79,17 +81,13 @@ pub struct App {
 impl App {
     /// Initialize preferences, global shortcuts, and asynchronous device discovery.
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        let custom_title_bar = appearance::configure_title_bar(cc);
         let font_missing = !appearance::configure(&cc.egui_ctx);
         let loaded = Settings::load();
         let settings_error = loaded.as_ref().err().cloned();
         let mut settings = loaded.unwrap_or_default();
-        if let Some(ffmpeg) = zsr::bundled_backend::bundled_ffmpeg() {
-            settings.ffmpeg = ffmpeg.to_string_lossy().into_owned();
-        } else if !std::path::Path::new(&settings.ffmpeg).is_file()
-            && std::path::Path::new(&settings.ffmpeg).is_absolute()
-        {
-            // A removed Full installation must not leave Lite pointing to a missing bundle.
-            settings.ffmpeg = "ffmpeg".into();
+        if !std::path::Path::new(&settings.obs_runtime).is_dir() {
+            settings.obs_runtime = zsr::obs_backend::default_runtime();
         }
         #[cfg(feature = "ui-smoke")]
         let settings = {
@@ -117,6 +115,7 @@ impl App {
         let last_settings = serde_json::to_string(&settings).unwrap_or_default();
         let (tx, rx) = mpsc::channel();
         let mut app = Self {
+            custom_title_bar,
             shortcuts: shortcuts::Shortcuts::new(
                 settings.start_shortcut.clone(),
                 settings.stop_shortcut.clone(),
@@ -129,7 +128,7 @@ impl App {
             file_opener: Default::default(),
             capabilities: None,
             checking: false,
-            probed_ffmpeg: String::new(),
+            probed_runtime: String::new(),
             audio: AudioDevices::default(),
             tx,
             rx,
@@ -198,10 +197,10 @@ impl eframe::App for App {
         self.poll_shortcuts(ctx);
         self.windows.poll();
         if self.capture_mode == CaptureMode::Window && !self.active() {
-            self.windows.refresh_due(&self.settings.ffmpeg);
+            self.windows.refresh_due(&self.settings.obs_runtime);
         }
         if !self.active() && self.picker.is_none() && self.settings.microphone {
-            self.audio.refresh_if_due(&self.settings.ffmpeg);
+            self.audio.refresh_if_due(&self.settings.obs_runtime);
         }
         #[cfg(feature = "ui-smoke")]
         self.snapshot(ctx);

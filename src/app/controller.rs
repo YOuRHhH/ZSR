@@ -11,12 +11,12 @@ impl App {
     pub(in crate::app) fn probe(&mut self) {
         self.checking = true;
         let tx = self.tx.clone();
-        let ffmpeg = self.settings.ffmpeg.clone();
+        let runtime = self.settings.obs_runtime.clone();
         std::thread::spawn(move || {
-            let result = platform::probe(&ffmpeg);
-            let _ = tx.send(Background::Probe(result, ffmpeg));
+            let result = platform::probe(&runtime);
+            let _ = tx.send(Background::Probe(result, runtime));
         });
-        self.audio.refresh(&self.settings.ffmpeg);
+        self.audio.refresh(&self.settings.obs_runtime);
     }
 
     pub(in crate::app) fn active(&self) -> bool {
@@ -27,18 +27,18 @@ impl App {
         !self.settings.microphone
             || self
                 .audio
-                .ready(&self.settings.ffmpeg, &self.settings.audio_device)
+                .ready(&self.settings.obs_runtime, &self.settings.audio_device)
     }
 
     /// Apply background results and refresh the file list after recording finalization.
     pub(in crate::app) fn poll(&mut self) {
         self.audio
-            .poll(&self.settings.ffmpeg, &mut self.settings.audio_device);
+            .poll(&self.settings.obs_runtime, &mut self.settings.audio_device);
         while let Ok(event) = self.rx.try_recv() {
             match event {
-                Background::Probe(result, ffmpeg) => {
+                Background::Probe(result, runtime) => {
                     self.capabilities = Some(result);
-                    self.probed_ffmpeg = ffmpeg;
+                    self.probed_runtime = runtime;
                     self.checking = false;
                     self.display = 0;
                 }
@@ -105,7 +105,7 @@ impl App {
         let capture = if self.capture_mode == CaptureMode::Window {
             let Some(window) = self
                 .windows
-                .selected(self.selected_window, &self.settings.ffmpeg)
+                .selected(self.selected_window, &self.settings.obs_runtime)
             else {
                 self.detail = tr(self.settings.language, "window_missing").into();
                 self.state = State::Failed;

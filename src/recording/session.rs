@@ -17,7 +17,8 @@ impl Session {
         let worker = thread::Builder::new()
             .name("zsr-recorder".into())
             .spawn(move || {
-                if let Err((detail, partial)) = super::worker::record(request, stop_rx, &events_tx)
+                if let Err((detail, partial)) =
+                    super::obs_worker::record(request, stop_rx, &events_tx)
                 {
                     let _ = events_tx.send(Event::Failed { detail, partial });
                 }
@@ -36,7 +37,7 @@ impl Session {
 impl Drop for Session {
     fn drop(&mut self) {
         self.stop();
-        // The worker owns and reaps FFmpeg even if the UI closes unexpectedly.
+        // The worker owns and reaps the OBS helper even if the UI closes unexpectedly.
         if let Some(worker) = self.worker.take() {
             let _ = worker.join();
         }

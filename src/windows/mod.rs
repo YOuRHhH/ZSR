@@ -5,7 +5,7 @@ mod win32;
 #[cfg(any(target_os = "linux", test))]
 mod x11;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct AppWindow {
     pub id: u64,
     pub pid: u32,
@@ -46,8 +46,8 @@ pub fn discover() -> Result<Vec<AppWindow>, String> {
         Err("Application window capture requires a native capture backend on this platform.".into())
     }
 }
-pub fn validate_target(target: &AppWindow, ffmpeg: &str) -> Result<(), String> {
-    check_backend(ffmpeg)?;
+pub fn validate_target(target: &AppWindow, runtime: &str) -> Result<(), String> {
+    check_backend(runtime)?;
     if !discover()?
         .iter()
         .any(|w| w.identity() == target.identity())
@@ -56,23 +56,12 @@ pub fn validate_target(target: &AppWindow, ffmpeg: &str) -> Result<(), String> {
     }
     Ok(())
 }
-pub(super) fn check_backend(ffmpeg: &str) -> Result<(), String> {
-    if cfg!(windows) {
-        // Inspect help only: never capture a window during discovery.
-        let text = crate::platform::output(
-            crate::platform::command(ffmpeg).args(["-hide_banner", "-h", "filter=gfxcapture"]),
-            std::time::Duration::from_secs(5),
-        )?;
-        if !graphics_capture_available(&text) {
-            return Err(
-                "Application recording requires an FFmpeg build with the gfxcapture filter and HWND support (Windows Graphics Capture). Select a compatible FFmpeg build and refresh."
-                    .into(),
-            );
-        }
-    }
-    Ok(())
+/// Window enumeration needs the configured OBS runtime, not an FFmpeg filter probe.
+pub(super) fn check_backend(runtime: &str) -> Result<(), String> {
+    crate::obs_backend::resolve(runtime).map(|_| ())
 }
 
+#[cfg(test)]
 fn graphics_capture_available(help: &str) -> bool {
     help.contains("Filter gfxcapture")
         && [

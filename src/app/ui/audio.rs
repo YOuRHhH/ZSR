@@ -3,9 +3,11 @@ use eframe::egui::{self, Color32};
 use zsr::audio;
 use zsr::i18n::tr;
 impl App {
+    /// Select capture sources and MP4 track routing before a recording begins.
     pub(in crate::app) fn audio_controls(&mut self, ui: &mut egui::Ui) {
         let lang = self.settings.language;
         ui.heading(tr(lang, "audio"));
+        ui.checkbox(&mut self.settings.desktop_audio, tr(lang, "desktop_audio"));
         ui.checkbox(&mut self.settings.microphone, tr(lang, "microphone"));
         ui.label(tr(lang, "audio_device"));
         let selected = audio::selected(self.audio.devices(), &self.settings.audio_device)
@@ -54,7 +56,7 @@ impl App {
             )
             .clicked()
         {
-            self.audio.refresh(&self.settings.ffmpeg);
+            self.audio.refresh(&self.settings.obs_runtime);
         }
         if self.audio.is_refreshing() {
             ui.horizontal(|ui| {
@@ -81,6 +83,27 @@ impl App {
             });
         }
         ui.small(tr(lang, "audio_hint"));
-        ui.small(tr(lang, "system_audio"));
+        ui.label(tr(lang, "audio_tracks"));
+        egui::ComboBox::from_id_salt("audio_tracks")
+            .selected_text(tr(
+                lang,
+                match self.settings.audio_tracks {
+                    zsr::settings::AudioTracks::Mixed => "audio_mixed",
+                    zsr::settings::AudioTracks::Separate => "audio_separate",
+                },
+            ))
+            .show_ui(ui, |ui| {
+                ui.selectable_value(
+                    &mut self.settings.audio_tracks,
+                    zsr::settings::AudioTracks::Mixed,
+                    tr(lang, "audio_mixed"),
+                );
+                ui.selectable_value(
+                    &mut self.settings.audio_tracks,
+                    zsr::settings::AudioTracks::Separate,
+                    tr(lang, "audio_separate"),
+                );
+            });
+        ui.small(tr(lang, "audio_tracks_hint"));
     }
 }

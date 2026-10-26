@@ -3,6 +3,7 @@ use std::path::Path;
 
 use super::*;
 use crate::platform::Display;
+/// Build a screen request with a negative desktop origin for command regressions.
 fn request(region: Option<Region>) -> Request {
     Request {
         settings: Settings::default(),
@@ -20,6 +21,32 @@ fn request(region: Option<Region>) -> Request {
             },
             region,
         },
+    }
+}
+
+/// Compositor video has no demuxer input; microphone indexing must follow that topology.
+#[test]
+#[cfg(windows)]
+fn compositor_audio_is_not_coupled_to_a_lavfi_demuxer() {
+    for microphone in [false, true] {
+        let mut request = request(None);
+        request.settings.microphone = microphone;
+        request.settings.audio_device = "test microphone".into();
+        let args = request.arguments_with_screen_input(
+            Path::new("out.mp4"),
+            Some("ddagrab,hwdownload,format=bgra"),
+        );
+        assert!(!args.windows(2).any(|p| p == ["-f", "lavfi"]));
+        assert!(!args.iter().any(|a| a == "-vf"));
+        assert!(args.windows(2).any(|p| p == ["-map", "[zsr_video]"]));
+        assert_eq!(
+            args.iter().filter(|a| *a == "-i").count(),
+            usize::from(microphone)
+        );
+        if microphone {
+            assert!(args.windows(2).any(|p| p == ["-map", "0:a:0"]));
+            assert!(args.windows(2).any(|p| p == ["-audio_buffer_size", "50"]));
+        }
     }
 }
 #[test]
@@ -86,13 +113,13 @@ fn window_capture_uses_identity_not_title_and_keeps_microphone() {
             .any(|arg| arg == "desktop" || arg == "-offset_x")
     );
     if cfg!(windows) {
-        assert!(args.windows(2).any(|p| p == ["-f", "lavfi"]));
-        let graph = args.windows(2).find(|p| p[0] == "-i").unwrap()[1].as_str();
+        assert!(!args.windows(2).any(|p| p == ["-f", "lavfi"]));
+        let graph = args.windows(2).find(|p| p[0] == "-filter_complex").unwrap()[1].as_str();
         assert!(graph.starts_with("gfxcapture=hwnd=123456:"));
-        assert!(graph.ends_with("hwdownload,format=bgra"));
+        assert!(graph.contains("hwdownload,format=bgra,setpts=PTS-STARTPTS"));
         assert!(!args.iter().any(|arg| arg == "gdigrab"));
         assert!(args.windows(2).any(|p| p == ["-i", "audio=Mic 录音"]));
-        assert!(args.windows(2).any(|p| p == ["-map", "1:a:0"]));
+        assert!(args.windows(2).any(|p| p == ["-map", "0:a:0"]));
     } else if cfg!(target_os = "linux") {
         assert!(args.windows(2).any(|p| p == ["-window_id", "123456"]));
     }

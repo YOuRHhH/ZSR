@@ -34,11 +34,15 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: unchecked
 [InstallDelete]
 ; Only the installer-owned engine directory is replaced when switching editions.
 Type: filesandordirs; Name: "{app}\ffmpeg"
+Type: filesandordirs; Name: "{app}\obs"
 
 [Files]
 Source: "{#AppBinary}"; DestDir: "{app}"; DestName: "ZSR.exe"; Flags: ignoreversion
 #if Edition == "Full"
-Source: "{#FFmpegRoot}\*"; DestDir: "{app}\ffmpeg"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#OBSRoot}\*"; DestDir: "{app}\obs"; Flags: ignoreversion recursesubdirs createallsubdirs
+#else
+Source: "{#OBSRoot}\bin\64bit\zsr-obs.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#OBSRoot}\bin\64bit\obs-*-test.exe"; DestDir: "{app}"; Flags: ignoreversion
 #endif
 
 [Icons]

@@ -5,7 +5,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[repr(C)]
 pub struct Display {
     pub x: i32,
@@ -18,7 +18,7 @@ unsafe extern "C" {
     fn zsr_displays(out: *mut Display, capacity: i32) -> i32;
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Source {
     pub display: Display,
     pub label: String,
@@ -42,7 +42,8 @@ pub fn command(program: &str) -> Command {
     cmd
 }
 
-pub fn probe(ffmpeg: &str) -> Capabilities {
+/// Discover native displays only after the libobs runtime has passed initialization.
+pub fn probe(runtime: &str) -> Capabilities {
     let wayland = cfg!(target_os = "linux")
         && (std::env::var("XDG_SESSION_TYPE").as_deref() == Ok("wayland")
             || std::env::var_os("WAYLAND_DISPLAY").is_some());
@@ -55,82 +56,29 @@ pub fn probe(ffmpeg: &str) -> Capabilities {
         return result;
     }
     let detected = (|| -> Result<Vec<Source>, String> {
+        crate::obs_backend::probe(runtime)?;
         let mut buffer = [Display::default(); 32];
-        // SAFETY: repr(C) matches display.h; valid writable fixed-size buffer;
-        // the C adapter retains no pointer and writes no more than capacity.
-        let count = unsafe { zsr_displays(buffer.as_mut_ptr(), buffer.len() as i32) };
+        // SAFETY: Native adapter writes at most the declared array capacity.
+        let count = unsafe { zsr_displays(buffer.as_mut_ptr(), 32) };
         if count <= 0 {
-            return Err("No native displays found. Check your desktop session.".into());
+            return Err("No native displays found".into());
         }
-        let encoders = output(
-            command(ffmpeg).args(["-hide_banner", "-encoders"]),
-            Duration::from_secs(8),
-        )?;
-        if !encoders.contains("libx264") {
-            return Err("FFmpeg must include the libx264 encoder.".into());
-        }
-        let devices = output(
-            command(ffmpeg).args(["-hide_banner", "-devices"]),
-            Duration::from_secs(8),
-        )?;
-        let required = if cfg!(windows) {
-            "gdigrab"
-        } else if cfg!(target_os = "macos") {
-            "avfoundation"
-        } else {
-            "x11grab"
-        };
-        if !devices.contains(required) {
-            return Err(format!(
-                "FFmpeg does not include {required} capture support."
-            ));
-        }
-        let mut sources: Vec<Source> = buffer[..count as usize]
+        Ok(buffer[..count as usize]
             .iter()
             .enumerate()
-            .map(|(i, display)| Source {
-                display: *display,
+            .map(|(i, d)| Source {
+                display: *d,
                 label: format!(
                     "{} · {} × {} · ({}, {})",
                     i + 1,
-                    display.width,
-                    display.height,
-                    display.x,
-                    display.y
+                    d.width,
+                    d.height,
+                    d.x,
+                    d.y
                 ),
-                av_index: None,
+                av_index: Some(d.id),
             })
-            .collect();
-        if cfg!(target_os = "macos") {
-            // Device enumeration intentionally exits nonzero on FFmpeg; inspect its diagnostic text.
-            let list = output(
-                command(ffmpeg).args([
-                    "-hide_banner",
-                    "-f",
-                    "avfoundation",
-                    "-list_devices",
-                    "true",
-                    "-i",
-                    "",
-                ]),
-                Duration::from_secs(8),
-            )?;
-            let indices = mac_screen_indices(&list);
-            sources = indices
-                .iter()
-                .enumerate()
-                .filter_map(|(i, index)| {
-                    sources.get(i).cloned().map(|mut s| {
-                        s.av_index = Some(*index);
-                        s
-                    })
-                })
-                .collect();
-            if sources.is_empty() {
-                return Err("FFmpeg did not report an AVFoundation screen. Check Screen Recording permission.".into());
-            }
-        }
-        Ok(sources)
+            .collect())
     })();
     match detected {
         Ok(sources) => result.sources = sources,
@@ -139,6 +87,7 @@ pub fn probe(ffmpeg: &str) -> Capabilities {
     result
 }
 
+#[cfg(test)]
 fn mac_screen_indices(text: &str) -> Vec<u32> {
     text.lines()
         .filter_map(|line| {

@@ -37,18 +37,18 @@ class DiscoveryTests(unittest.TestCase):
             with patch.dict(os.environ, {"LOCALAPPDATA": temporary}, clear=True), patch.object(PACKAGING.shutil, "which", return_value=None):
                 self.assertEqual(PACKAGING.find_compiler(None), str(compiler.resolve()))
 
-    def test_ffmpeg_path_resolves_distribution_root(self):
-        """Normalize PATH executables and explicit bin folders to their distribution root."""
+    def test_obs_requires_an_explicit_complete_runtime(self):
+        """Never mistake an FFmpeg installation for the OBS distribution."""
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            executable = root / "bin/ffmpeg.exe"
-            executable.parent.mkdir()
-            executable.touch()
-            with patch.object(PACKAGING.shutil, "which", return_value=str(executable)):
-                self.assertEqual(PACKAGING.find_ffmpeg(None), root.resolve())
-            self.assertEqual(PACKAGING.find_ffmpeg(executable.parent), root.resolve())
+            library = root / "bin/64bit/obs.dll"
+            library.parent.mkdir(parents=True)
+            library.touch()
+            self.assertEqual(PACKAGING.find_obs(root), root.resolve())
             with self.assertRaises(FileNotFoundError):
-                PACKAGING.find_ffmpeg(root / "missing")
+                PACKAGING.find_obs(None)
+            with self.assertRaises(FileNotFoundError):
+                PACKAGING.find_obs(root / "missing")
 
 
 if __name__ == "__main__":

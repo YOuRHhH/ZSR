@@ -50,7 +50,7 @@ void zsr_recording_power_end(void)
     ReleaseSRWLockExclusive(&policy_lock);
 }
 
-/* Protect only the encoder child; do not raise process priority or change power plans. */
+/* Protect only the encoder child without changing the system power plan. */
 int zsr_recording_power_child(void *handle)
 {
     DWORD mask = PROCESS_POWER_THROTTLING_IGNORE_TIMER_RESOLUTION |
@@ -58,6 +58,14 @@ int zsr_recording_power_child(void *handle)
     if (protect_process((HANDLE)handle, mask, NULL))
         return 1;
     /* Older Windows versions may support execution-speed policy but not timer policy. */
-    return protect_process((HANDLE)handle, PROCESS_POWER_THROTTLING_EXECUTION_SPEED, NULL);
+    return protect_process((HANDLE)handle, PROCESS_POWER_THROTTLING_EXECUTION_SPEED, NULL) ? 2 : 0;
+}
+
+/* Raise only the owned recording process one level; return a Windows error on failure. */
+unsigned long zsr_recording_priority(void *handle)
+{
+    if (SetPriorityClass((HANDLE)handle, ABOVE_NORMAL_PRIORITY_CLASS))
+        return 0;
+    return GetLastError();
 }
 #endif

@@ -33,7 +33,7 @@ impl App {
                         .add_enabled(
                             self.state != State::Stopping,
                             egui::Button::new(tr(lang, "stop"))
-                                .fill(Color32::from_rgb(150, 45, 55)),
+                                .fill(Color32::from_rgb(115, 20, 30)),
                         )
                         .clicked()
                         && let Some(session) = &self.session
@@ -46,11 +46,11 @@ impl App {
                         && (self.capture_mode != CaptureMode::Window
                             || self
                                 .windows
-                                .selected(self.selected_window, &self.settings.ffmpeg)
+                                .selected(self.selected_window, &self.settings.obs_runtime)
                                 .is_some())
                         && self.audio_ready()
                         && !self.checking
-                        && self.probed_ffmpeg == self.settings.ffmpeg
+                        && self.probed_runtime == self.settings.obs_runtime
                         && self.capabilities.as_ref().is_some_and(|c| {
                             !c.sources.is_empty() && c.error.is_none() && !c.wayland
                         });
@@ -58,7 +58,7 @@ impl App {
                         .add_enabled(
                             ready,
                             egui::Button::new(tr(lang, "record"))
-                                .fill(Color32::from_rgb(35, 100, 170)),
+                                .fill(Color32::from_rgb(0, 65, 115)),
                         )
                         .clicked()
                     {

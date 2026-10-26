@@ -1,3 +1,5 @@
+> Backend migration: the active recorder now uses OBS libobs. See [OBS architecture and validation](obs-backend.md). FFmpeg implementation details below describe the previous backend.
+
 # Implementation status
 
 Date: 2026-10-23  
@@ -9,7 +11,7 @@ Windows display/region capture now prefers FFmpeg `ddagrab` (DXGI desktop duplic
 
 An opt-in UI timing harness (`ui-smoke`, `ZSR_UI_PERFORMANCE=<json path>`) records bounded repaint/CPU samples without saving preferences or starting capture. `ZSR_UI_TRANSPARENT_BASELINE=1` reproduces the former main-window setting for comparison. On this Windows machine both modes produced approximately 16.7 ms repaint intervals and 2 ms UI CPU time, so transparency was not established as the cause of the reported 1 FPS behavior. A live user recording was confirmed to use WGC at 1080p/60 with microphone audio; sampled CPU/GPU utilization did not show saturation. Desktop duplication startup and a short region encode are tested separately; those tests do not establish that the user's intermittent UI/recording lag is resolved.
 
-Windows capture now temporarily opts the ZSR process out of ignored timer-resolution requests and opts its FFmpeg child out of timer and execution-speed power throttling. A reference-counted native guard restores ZSR's previous policy on worker exit, including startup failures. Unsupported Windows policies fall back to system defaults with a diagnostic. Process priority and the system power plan are unchanged. This addresses a suspected minimized-window scheduling cause; the user's desktop stutter has not yet been reproduced or confirmed resolved. Synthetic capture was verified to continue producing changing frames with UI event consumption paused for four seconds.
+Windows capture now temporarily opts the ZSR process out of ignored timer-resolution requests and opts its FFmpeg child out of timer and execution-speed power throttling. A reference-counted native guard restores ZSR's previous policy on worker exit, including startup failures. Unsupported Windows policies fall back to system defaults with a diagnostic. Only the recording FFmpeg child is raised to Above Normal priority; setup probes and the system power plan remain unchanged. Policy results and failures are retained in the recording sidecar log. This addresses a suspected minimized-window scheduling cause; the user's desktop stutter has not yet been reproduced or confirmed resolved. Synthetic capture was verified to continue producing changing frames with UI event consumption paused for four seconds.
 
 Reference: [Microsoft process power-throttling documentation](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-setprocessinformation).
 
@@ -21,7 +23,7 @@ The main screen keeps capture source, microphone, resolution, frame rate, and re
 | Languages | English and Simplified Chinese, JSON catalogs, runtime switching, persisted selection |
 | Platform integration | Small native C adapter for display discovery, accessed through a documented C ABI |
 | Media pipeline | External FFmpeg process with platform capture inputs; owned and supervised by a Rust worker |
-| Encoding | Software H.264 via libx264; AAC when microphone recording is enabled |
+| Encoding | Windows automatically probes AMF/NVENC/QSV H.264 with libx264 fallback; other platforms use libx264; AAC for microphone audio |
 | Output | Fragmented MP4 intermediate, final filename published only after successful process completion and recorded frames |
 | Privacy | Local files, no network dependency or telemetry |
 | OBS | Capture and preview-cropping source reviewed; no code reused |
@@ -52,7 +54,7 @@ Application-only snapshots can be reproduced with the optional `ui-smoke` featur
 2. Add a preview and audio activity meters. Visual region selection and automatic microphone discovery are implemented.
 3. Implement native Wayland portal capture and platform system-audio sources; qualify macOS display cropping.
 4. Add storage monitoring, recovery workflows, configurable output scaling, and settings-file migration.
-5. Add pause/resume, shortcuts, hardware encoding, and signed distribution packages after the core recording path is stable.
+5. Add pause/resume, hardware encoding on macOS/Linux, and signed distribution packages after the core recording path is stable.
 
 The [requirements table](requirements.md) remains the target specification. This milestone implements a subset; pending entries are not claimed as complete.
 
@@ -79,7 +81,7 @@ The optional `ui-smoke` region preview renders the shared egui fallback only; it
 
 The source selector now includes Application window / 应用窗口. It lists window titles, application/process information, and unique IDs, refreshes every five seconds while the mode is idle, and provides manual refresh. A vanished selection is marked unavailable and never replaced automatically. Before launching FFmpeg, the recording worker revalidates the selected window ID and process ID. No title-based or desktop fallback is used. Microphone recording remains available.
 
-Windows discovers visible, non-minimized, non-cloaked top-level windows through native EnumWindows, excluding ZSR and tool windows. It captures the client area through Windows Graphics Capture using the FFmpeg gfxcapture filter with an explicit HWND. GPU frames are downloaded as BGRA for the existing libx264 encoder. Filter-help inspection verifies the required options before enabling recording and does not capture frames. There is no GDI or desktop fallback. Linux/X11 discovers windows with `wmctrl -lp` and records through x11grab `-window_id`. macOS AVFoundation and Wayland do not support this feature in the current backend; the UI explains the limitation.
+Windows discovers visible, non-minimized, non-cloaked top-level windows through native EnumWindows, excluding ZSR and tool windows. It captures the client area through Windows Graphics Capture using the FFmpeg gfxcapture filter with an explicit HWND. GPU frames are downloaded as BGRA for scaling and the selected H.264 encoder. Filter-help inspection verifies the required options before enabling recording and does not capture frames. There is no GDI or desktop fallback. Linux/X11 discovers windows with `wmctrl -lp` and records through x11grab `-window_id`. macOS AVFoundation and Wayland do not support this feature in the current backend; the UI explains the limitation.
 
 This feature selects one window, not every window of a process. Keep the target open, visible, and at a fixed size. Protected surfaces remain subject to OS capture restrictions. Linux/X11 occlusion behavior depends on its backend. System/application audio is not added by selecting a window.
 
@@ -108,3 +110,8 @@ Native Windows tests verify edge positions, no overlap with capture pixels, clic
 
 Output settings provide editable global start/stop shortcuts, defaulting to Ctrl+Shift+F9 and Ctrl+Shift+F10. Apply registers both accelerators and persists them only on success. Duplicate or invalid combinations are rejected; registration conflicts restore the previous bindings where possible and display errors. Start obeys recording readiness and picker guards; stop uses the existing finalize workflow. Bindings are released on exit. Windows/macOS and Linux X11 use the global-hotkey platform backend; Wayland global shortcuts are not supported. Native key dispatch outside the application still requires interactive qualification.
 `nShortcut entry now uses click-to-capture buttons. Press a combination directly; Escape or loss of focus cancels. Global registrations are temporarily suspended during capture and restored after key release to prevent recording actions while editing. Apply still validates and saves both shortcuts. Key conversion and duplicate validation tests pass; native interactive behavior remains to be qualified.
+
+
+## Recording performance diagnostics (2026-10-26)
+
+See [the ordered investigation and validation report](recording-lag-repairs.md). Recording logs now persist FFmpeg speed, duplicate/drop counters, backend selection, encoder options, process ID and scheduling results. Windows tests hardware encoder initialization before selecting AMF, NVENC or QSV; unavailable encoders fall back to libx264. The settings window can disable hardware encoding for comparison. Software 60 fps uses ultrafast; 30 fps retains veryfast. Hardware encoding currently retains CPU scaling and GPU downloads, so it does not eliminate all CPU work.

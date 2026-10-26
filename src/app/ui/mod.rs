@@ -12,6 +12,9 @@ use zsr::i18n::tr;
 impl App {
     /// Render recording essentials and the optional preferences window.
     pub(super) fn render(&mut self, ctx: &egui::Context) {
+        if self.custom_title_bar {
+            self.title_bar(ctx);
+        }
         let lang = self.settings.language;
         egui::TopBottomPanel::top("header").show(ctx, |ui| {
             ui.add_space(10.0);

@@ -11,7 +11,7 @@ impl App {
         ui.label(tr(lang, "window_source"));
         let selected = self
             .windows
-            .selected(self.selected_window, &self.settings.ffmpeg)
+            .selected(self.selected_window, &self.settings.obs_runtime)
             .map(|w| w.label())
             .unwrap_or_else(|| tr(lang, "window_choose").into());
         egui::ComboBox::from_id_salt("application_window")
@@ -33,7 +33,7 @@ impl App {
             )
             .clicked()
         {
-            self.windows.refresh(&self.settings.ffmpeg);
+            self.windows.refresh(&self.settings.obs_runtime);
         }
         if self.windows.loading() {
             ui.spinner();
@@ -45,7 +45,7 @@ impl App {
         } else if self.selected_window.is_some()
             && self
                 .windows
-                .selected(self.selected_window, &self.settings.ffmpeg)
+                .selected(self.selected_window, &self.settings.obs_runtime)
                 .is_none()
         {
             ui.label(tr(lang, "window_missing"));

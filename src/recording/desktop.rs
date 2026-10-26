@@ -137,7 +137,10 @@ mod tests {
         let args =
             request.arguments_with_screen_input(std::path::Path::new("out.mp4"), Some(&input));
         if cfg!(windows) {
-            assert!(args.windows(2).any(|pair| pair == ["-i", input.as_str()]));
+            assert!(
+                args.windows(2)
+                    .any(|pair| pair[0] == "-filter_complex" && pair[1].starts_with(&input))
+            );
             assert!(!args.iter().any(|arg| arg == "gdigrab" || arg == "desktop"));
         }
     }
