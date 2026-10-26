@@ -11,9 +11,19 @@ struct Levels {
 /// Retain the loudest peak seen so quiet intervals cannot hide an earlier captured signal.
 fn retain_peak(target: &AtomicU32, value: f32) {
     if value.is_finite() {
-        let _ = target.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |bits| {
-            (value > f32::from_bits(bits)).then_some(value.to_bits())
-        });
+        // Explicit CAS remains compatible with the minimum Rust version and newer atomic APIs.
+        let mut current = target.load(Ordering::Relaxed);
+        while value > f32::from_bits(current) {
+            match target.compare_exchange_weak(
+                current,
+                value.to_bits(),
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => break,
+                Err(observed) => current = observed,
+            }
+        }
     }
 }
 
