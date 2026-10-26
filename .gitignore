@@ -1,0 +1,9 @@
+/target/
+/dist/
+# Local reference checkout and machine-specific editor configuration.
+/obs-studio/
+/.vscode/
+__pycache__/
+*.mp4
+*.partial.mp4
+*.log

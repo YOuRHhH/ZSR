@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=ZSR
+Comment=Screen recorder
+Comment[zh_CN]=屏幕录制工具
+Exec=ZSR
+Icon=zsr
+Terminal=false
+Categories=AudioVideo;Recorder;
+StartupWMClass=zsr

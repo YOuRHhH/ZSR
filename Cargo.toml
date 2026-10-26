@@ -1,0 +1,38 @@
+[package]
+name = "zsr"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+description = "Cross-platform desktop screen recorder"
+build = "build.rs"
+
+# Keep the Rust library name stable while naming the application ZSR.
+[[bin]]
+name = "ZSR"
+path = "src/main.rs"
+
+[features]
+ui-smoke = ["dep:image"]
+
+[dependencies]
+eframe = { version = "=0.33.3", default-features = false, features = ["accesskit", "default_fonts", "glow", "wayland", "x11"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+directories = "6"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+open = "5"
+rfd = "0.15"
+tempfile = "3"
+image = { version = "0.25", default-features = false, features = ["png"], optional = true }
+global-hotkey = "0.7"
+
+[build-dependencies]
+cc = "1"
+embed-resource = "3"
+
+[profile.release]
+# Optimize the shipped desktop executable for size across crate boundaries.
+opt-level = "s"
+lto = "fat"
+codegen-units = 1
+strip = true
