@@ -12,7 +12,7 @@ permissions:
 
 concurrency:
   group: package-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
 
 jobs:
   package:
@@ -35,6 +35,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Validate release tag
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: python scripts/release.py --tag "$RELEASE_TAG"
+        shell: bash
       - uses: Swatinem/rust-cache@v2
         with:
           key: package-${{ matrix.platform }}
@@ -79,3 +85,30 @@ jobs:
           path: dist/${{ matrix.platform }}/
           if-no-files-found: error
           retention-days: 14
+
+  release:
+    name: Publish GitHub Release
+    needs: package
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: ZSR-*-Full-Lite
+          merge-multiple: true
+          path: release-assets
+      - name: Validate packages and publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: python scripts/release.py --tag "$RELEASE_TAG" --assets release-assets --publish
