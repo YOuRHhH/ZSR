@@ -32,13 +32,16 @@ pub struct Capabilities {
     pub wayland: bool,
 }
 
+/// Create a backend process without showing a Windows console window.
 pub fn command(program: &str) -> Command {
-    let mut cmd = Command::new(program);
+    let cmd = Command::new(program);
     #[cfg(windows)]
-    {
+    let cmd = {
         use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW; FFmpeg uses piped stdin.
-    }
+        let mut cmd = cmd;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW; backend helpers use pipes.
+        cmd
+    };
     cmd
 }
 

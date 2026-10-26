@@ -15,7 +15,11 @@ pub fn default_runtime() -> String {
             .and_then(Path::parent)
             .unwrap_or(Path::new("."))
             .join("../lib/zsr/obs"),
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("target/obs-runtime/32.2.2"),
+        Path::new(env!("CARGO_MANIFEST_DIR")).join(if cfg!(target_os = "linux") {
+            "target/obs-runtime/32.2.2-linux"
+        } else {
+            "target/obs-runtime/32.2.2"
+        }),
     ];
     candidates
         .into_iter()
