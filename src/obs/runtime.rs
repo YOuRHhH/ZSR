@@ -80,7 +80,10 @@ impl Runtime {
             root: root.into(),
         };
         unsafe {
-            (runtime.api.obs_add_data_path)(c(root.join("data/libobs").to_string_lossy()).as_ptr());
+            // libobs concatenates filenames directly, so custom data paths need a trailing separator.
+            (runtime.api.obs_add_data_path)(
+                c(format!("{}/", root.join("data/libobs").to_string_lossy())).as_ptr(),
+            );
         }
         let graphics = c(bin
             .join(if cfg!(windows) {
