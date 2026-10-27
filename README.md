@@ -86,7 +86,7 @@ The automatic Linux runtime targets **Ubuntu 24.04 x86_64**. Full DEBs bundle OB
 
 ### GitHub Actions
 
-[Packaging workflow](.github/workflows/package.yml) runs Windows and Ubuntu jobs on pushes to `main`, `v*` tags, pull requests, or manual **Actions → Package Windows and Linux → Run workflow**. Each runner uses `python scripts/package.py`. Download **ZSR-windows-Full-Lite** and **ZSR-linux-Full-Lite** from the completed run's Artifacts section (retained for 14 days). Branch/PR/manual runs upload workflow artifacts only. Pushing a matching version tag also publishes a GitHub Release after both platform jobs pass. Installers are not code-signed. Linux CI installs the Full package and checks OBS startup under Xvfb; this does not replace testing capture on a real desktop.
+[Packaging workflow](.github/workflows/package.yml) runs Windows and Ubuntu installer jobs only when a `v*` version tag is pushed. Each runner uses `python scripts/package.py`. Download **ZSR-windows-Full-Lite** and **ZSR-linux-Full-Lite** from the completed run's Artifacts section (retained for 14 days). The tag must match the Cargo package version; after both platform jobs pass, the workflow publishes a GitHub Release. Ordinary branch pushes and pull requests run the separate Rust desktop checks; they do not build installers. Installers are not code-signed. Linux CI installs the Full package and checks OBS startup under Xvfb; this does not replace testing capture on a real desktop.
 
 ### Publishing a GitHub Release
 
@@ -99,7 +99,7 @@ git push github v0.1.0
 
 In a fresh GitHub clone the remote is usually `origin`; use `git push origin v0.1.0` instead. The tag must exactly match `v` plus the Cargo package version. CI builds and verifies both platforms, then uploads all four installers and `SHA256SUMS.txt` to a draft release with generated release notes. It publishes only after every upload succeeds. Tags containing a prerelease suffix (for example `v0.2.0-rc.1`) produce prereleases. No extra token secret is needed: only the release job receives `contents: write` on `GITHUB_TOKEN`.
 
-If an upload fails, rerun the failed release job to complete the draft. An already published release is not overwritten; publish a new version instead. Manual workflow runs remain build-only—even when a tag is selected. No version tag or release is created by committing the workflow itself.
+If an upload fails, rerun the failed release job to complete the draft. An already published release is not overwritten; publish a new version instead. The packaging workflow has no manual dispatch trigger. No version tag or release is created by committing the workflow itself.
 
 ### Windows (direct packager)
 

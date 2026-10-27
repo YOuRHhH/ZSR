@@ -106,7 +106,7 @@ python3 scripts/package_unix.py --platform linux --obs-dir /path/to/obs-runtime
 
 ## CI 与发布
 
-[打包工作流](.github/workflows/package.yml) 在推送 `main`、推送 `v*` 标签、提交 PR 或手动运行时，分别构建 Windows 和 Ubuntu 安装包。完成后可在 Actions 的 Artifacts 中下载 `ZSR-windows-Full-Lite` 和 `ZSR-linux-Full-Lite`，保留 14 天。安装包未进行代码签名。Linux CI 安装 Full 包并在 Xvfb 下检查 OBS 启动，实际桌面采集仍需单独测试。
+[打包工作流](.github/workflows/package.yml) 仅在推送 `v*` 版本标签时，分别构建 Windows 和 Ubuntu 安装包。标签必须与 Cargo 包版本匹配；两个平台成功后，工作流发布 GitHub Release。完成后可在 Actions 的 Artifacts 中下载 `ZSR-windows-Full-Lite` 和 `ZSR-linux-Full-Lite`，保留 14 天。普通分支推送和 PR 运行独立的 Rust 桌面检查，不构建安装包。安装包未进行代码签名。Linux CI 安装 Full 包并在 Xvfb 下检查 OBS 启动，实际桌面采集仍需单独测试。
 
 发布时先修改 `Cargo.toml` 版本并通过 Cargo 更新 `Cargo.lock`，提交并推送，再创建与版本完全匹配的标签，例如当前版本：
 
@@ -117,7 +117,7 @@ git push github v0.1.0
 
 若远程名为 `origin`，使用 `git push origin v0.1.0`。两个平台成功后，CI 将四个安装包和 `SHA256SUMS.txt` 上传到草稿 Release，全部上传成功才发布，并自动生成发布说明。带预发布后缀的标签（如 `v0.2.0-rc.1`）会生成预发布版。仅发布任务获得 `GITHUB_TOKEN` 的 `contents: write` 权限，无需额外 token secret。
 
-上传失败可重新运行失败的发布任务以完成草稿；已发布版本不会被覆盖，应发布新版本。分支、PR 和手动运行只生成工作流构件，手动选择标签也不会触发发布；提交工作流本身不会创建标签或 Release。
+上传失败可重新运行失败的发布任务以完成草稿；已发布版本不会被覆盖，应发布新版本。打包工作流不提供手动触发入口；提交工作流本身不会创建标签或 Release。
 
 ## 验证与排障
 

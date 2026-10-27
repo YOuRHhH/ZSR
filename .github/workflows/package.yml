@@ -1,11 +1,9 @@
 name: Package Windows and Linux
 
 on:
-  workflow_dispatch:
+  # Build installers only when a version tag is pushed for a release.
   push:
-    branches: [main]
     tags: ['v*']
-  pull_request:
 
 permissions:
   contents: read
