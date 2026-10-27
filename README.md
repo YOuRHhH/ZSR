@@ -1,6 +1,24 @@
 # ZSR
 
+English | [简体中文](README-zh.md)
+
 ZSR is a Rust desktop screen recorder with C platform adapters and an English/Chinese interface. Recording now uses **OBS libobs**, through the isolated `zsr-obs` helper. ZSR no longer runs the FFmpeg command-line application for capture, encoding or device discovery. OBS itself includes codec libraries, including FFmpeg libraries.
+
+## Technical details and technology choices
+
+| Technology | Purpose and rationale |
+| --- | --- |
+| Rust 2024 / Rust 1.88+ | Application state, configuration, process management and recording orchestration, using type checking and ownership to manage resource lifetimes. |
+| eframe/egui 0.33.3 + glow | Immediate-mode desktop UI with OpenGL rendering, without launching the OBS Qt frontend. |
+| OBS libobs 32 / `libloading` | Dynamically loads the recording runtime; OBS owns capture timing, GPU rendering, audio/video synchronization, encoding and muxing. The project pins OBS 32.2.2 and checks the libobs major version. |
+| Isolated `zsr-obs` process / JSON Lines | Keeps OBS initialization and native recording lifetimes separate from the UI. Serialized requests, progress events and a stop command connect the processes; closing the pipe also requests stop. |
+| C/C++ adapters / `cc` | Native window/display integration, region picking, recording borders and OBS log callbacks. |
+| Serde / JSON | Configuration and process protocol serialization. UI translations live in `locales/zh-CN.json` and `locales/en.json`. |
+| Python 3.11+ / Inno Setup / dpkg-deb | Verified runtime downloads, helper staging, Windows installers and Linux DEB packaging. |
+
+The UI does not supply frames to the recorder. Windows display capture uses OBS `monitor_capture`, window capture uses `window_capture`, and region capture uses scene-item cropping. OBS fits the output on the GPU.
+
+Source layout: `src/app/` contains the desktop UI and interaction; `src/recording/` manages sessions and process supervision; `src/obs/` implements libobs bindings and recording; `native/` contains platform adapters; `scripts/` provides runtime and packaging tools; `tests/` contains Rust integration and Python packaging tests. See [OBS backend](docs/obs-backend.md) for the current architecture; older FFmpeg troubleshooting documents are historical records.
 
 ## Windows development
 
@@ -26,7 +44,7 @@ py scripts/stage_obs.py --obs-dir target/obs-runtime/32.2.2 --helper target/regi
 
 Re-stage the helper after changing its code. You can override runtime discovery with `ZSR_OBS_RUNTIME`, or choose **Settings → Advanced → OBS runtime folder**. A bundled `obs` directory beside ZSR takes precedence over the development runtime when no explicit override is supplied.
 
-**从 FFmpeg 迁移后，请重新选择麦克风。** OBS 使用系统原生设备标识，与原来的 DirectShow 标识不同。软件不会擅自替换失效的设备选择。
+**Reselect your microphone after migrating from FFmpeg.** OBS uses native device identifiers that differ from the previous DirectShow identifiers. ZSR does not silently replace an invalid device selection.
 
 ## Recording
 
@@ -110,7 +128,7 @@ python3 scripts/package_unix.py --platform macos --obs-dir /path/to/obs-runtime
 python3 scripts/package_unix.py --platform linux --obs-dir /path/to/obs-runtime
 ```
 
-输出在 `dist/`。请在对应系统构建和验证；Windows 上的成功测试不代表 macOS/Linux 已通过验证。
+Outputs are in `dist/`. Build and verify on the destination OS; successful Windows tests do not establish macOS/Linux capture support.
 
 ## Verification
 
