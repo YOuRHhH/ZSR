@@ -7,6 +7,7 @@ mod region;
 mod shortcuts;
 #[cfg(feature = "ui-smoke")]
 mod smoke;
+mod startup;
 mod title_bar;
 mod ui;
 use eframe::egui;
@@ -43,6 +44,7 @@ enum CaptureMode {
 }
 
 pub struct App {
+    startup: Option<startup::Startup>,
     custom_title_bar: bool,
     shortcuts: shortcuts::Shortcuts,
     settings: Settings,
@@ -115,6 +117,7 @@ impl App {
         let last_settings = serde_json::to_string(&settings).unwrap_or_default();
         let (tx, rx) = mpsc::channel();
         let mut app = Self {
+            startup: Some(startup::Startup::new(cc)),
             custom_title_bar,
             shortcuts: shortcuts::Shortcuts::new(
                 settings.start_shortcut.clone(),
@@ -188,6 +191,10 @@ impl eframe::App for App {
     /// Poll recording and shortcut events, then update the interface and overlays.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.poll();
+        // Poll discovery throughout the splash, but keep recording shortcuts inactive.
+        if self.startup_screen(ctx) {
+            return;
+        }
         #[cfg(feature = "ui-smoke")]
         if let Some(performance) = &mut self.performance {
             performance.sample(ctx, _frame);

@@ -10,7 +10,7 @@ use super::App;
 use eframe::egui::{self, Color32, RichText};
 use zsr::i18n::tr;
 impl App {
-    /// Render recording essentials and the optional preferences window.
+    /// Render recording essentials, the local-storage notice and optional preferences.
     pub(super) fn render(&mut self, ctx: &egui::Context) {
         if self.custom_title_bar {
             self.title_bar(ctx);
@@ -38,16 +38,20 @@ impl App {
             ui.add_space(8.0);
         });
         egui::TopBottomPanel::bottom("footer").show(ctx, |ui| {
+            // Keep the storage notice without a development-stage label in shipped builds.
             ui.horizontal_wrapped(|ui| {
-                ui.small(tr(lang, "milestone"));
-                ui.separator();
                 ui.small(tr(lang, "privacy"));
             });
+        });
+        // Keep Start/Stop and the recording indicator visible while settings scroll.
+        egui::TopBottomPanel::top("recording_status").show(ctx, |ui| {
+            ui.add_space(8.0);
+            self.recording_controls(ui);
+            ui.add_space(8.0);
         });
         egui::CentralPanel::default().show(ctx, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
                 ui.add_space(12.0);
-                self.recording_controls(ui);
                 self.notices(ui);
                 ui.add_space(14.0);
                 ui.add_enabled_ui(!self.active() && self.picker.is_none(), |ui| {

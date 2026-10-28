@@ -1,33 +1,41 @@
 use super::super::{App, CaptureMode};
-use eframe::egui::{self};
+use eframe::egui::{self, RichText};
 use zsr::i18n::tr;
 impl App {
-    /// Select the recording source and microphone; preferences live in Settings.
+    /// Present large, clearly selected capture choices before source/audio controls.
     pub(in crate::app) fn capture_controls(&mut self, ui: &mut egui::Ui) {
         let lang = self.settings.language;
         ui.heading(tr(lang, "capture"));
         ui.horizontal_wrapped(|ui| {
-            ui.selectable_value(
-                &mut self.capture_mode,
-                CaptureMode::Display,
-                tr(lang, "display"),
-            );
-            if ui
-                .selectable_value(
-                    &mut self.capture_mode,
-                    CaptureMode::Region,
-                    tr(lang, "region"),
-                )
-                .clicked()
-            {
-                self.open_region_picker();
+            for (mode, label) in [
+                (CaptureMode::Display, "display"),
+                (CaptureMode::Region, "region"),
+                (CaptureMode::Window, "window"),
+            ] {
+                let selected = self.capture_mode == mode;
+                if ui
+                    .add(
+                        egui::Button::new(RichText::new(tr(lang, label)).strong())
+                            .selected(selected)
+                            .min_size(egui::vec2(112.0, 40.0)),
+                    )
+                    .clicked()
+                {
+                    self.capture_mode = mode;
+                    if self.capture_mode == CaptureMode::Region {
+                        self.open_region_picker();
+                    }
+                }
             }
-            ui.selectable_value(
-                &mut self.capture_mode,
-                CaptureMode::Window,
-                tr(lang, "window"),
-            );
         });
+        ui.small(tr(
+            lang,
+            if self.active() {
+                "capture_locked_hint"
+            } else {
+                "capture_choose_hint"
+            },
+        ));
         if self.capture_mode == CaptureMode::Window {
             self.window_controls(ui);
         } else {
