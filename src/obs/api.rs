@@ -2,6 +2,14 @@
 use std::ffi::{c_char, c_void};
 pub type Ptr = *mut c_void;
 pub type MeterCallback = unsafe extern "C" fn(Ptr, *const f32, *const f32, *const f32);
+pub type VideoCallback = unsafe extern "C" fn(Ptr, *mut VideoData);
+/// Packed video callback layout from libobs/media-io/video-io.h (MAX_AV_PLANES = 8).
+#[repr(C)]
+pub struct VideoData {
+    pub data: [*const u8; 8],
+    pub linesize: [u32; 8],
+    pub timestamp: u64,
+}
 #[repr(C)]
 pub struct VideoInfo {
     pub graphics: *const c_char,
@@ -29,6 +37,7 @@ pub struct Vec2 {
     pub y: f32,
 }
 #[repr(C)]
+#[derive(Clone)]
 pub struct Crop {
     pub left: i32,
     pub top: i32,
@@ -95,12 +104,15 @@ api! {
     obs_sceneitem_set_bounds_type(Ptr,i32) -> ();
     obs_sceneitem_set_bounds(Ptr,*const Vec2) -> ();
     obs_sceneitem_set_bounds_alignment(Ptr,u32) -> ();
+    obs_sceneitem_set_pos(Ptr,*const Vec2) -> ();
     obs_video_encoder_create(*const c_char,*const c_char,Ptr,Ptr) -> Ptr;
     obs_audio_encoder_create(*const c_char,*const c_char,Ptr,usize,Ptr) -> Ptr;
     obs_encoder_release(Ptr) -> ();
     obs_encoder_set_video(Ptr,Ptr) -> ();
     obs_encoder_set_audio(Ptr,Ptr) -> ();
     obs_get_video() -> Ptr;
+    obs_add_raw_video_callback(Ptr,VideoCallback,Ptr) -> ();
+    obs_remove_raw_video_callback(VideoCallback,Ptr) -> ();
     obs_get_lagged_frames() -> u32;
     video_output_get_skipped_frames(Ptr) -> u32;
     obs_get_audio() -> Ptr;

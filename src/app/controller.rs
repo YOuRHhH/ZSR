@@ -136,6 +136,8 @@ impl App {
                 .clone();
         }
         let request = Request { settings, capture };
+        // Release the idle capture helper before the recording session takes over.
+        self.preview = Default::default();
         match Session::start(request) {
             Ok(session) => {
                 self.session = Some(session);

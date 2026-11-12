@@ -101,7 +101,7 @@ pub fn video(runtime: &Runtime, request: &Request) -> Result<(Ptr, Option<Crop>)
     Ok((source, crop))
 }
 
-/// Wait for native capture startup and fit the cropped image inside the canvas.
+/// Wait for capture startup and fit the whole cropped image at the current canvas origin.
 pub fn layout(
     runtime: &Runtime,
     source: Ptr,
@@ -134,6 +134,9 @@ pub fn layout(
                 y: height as f32,
             },
         );
+        // OBS 32 stores positions relative to the canvas. Resizing its aspect ratio can
+        // move the old (0, 0) off-canvas, so re-anchor after every layout (including resets).
+        (runtime.api.obs_sceneitem_set_pos)(item, &Vec2 { x: 0.0, y: 0.0 });
     }
     Ok(())
 }

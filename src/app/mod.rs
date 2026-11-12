@@ -2,6 +2,7 @@ mod appearance;
 mod controller;
 mod file_opener;
 mod preferences;
+mod preview;
 mod recordings;
 mod region;
 mod shortcuts;
@@ -64,6 +65,7 @@ pub struct App {
     region: Region,
     picker: Option<region::PickerWindow>,
     region_marker: region::RegionMarker,
+    preview: preview::Preview,
     state: State,
     session: Option<Session>,
     frames: u64,
@@ -147,6 +149,7 @@ impl App {
             },
             picker: None,
             region_marker: Default::default(),
+            preview: Default::default(),
             state: State::Idle,
             session: None,
             frames: 0,
@@ -209,6 +212,8 @@ impl eframe::App for App {
         if !self.active() && self.picker.is_none() && self.settings.microphone {
             self.audio.refresh_if_due(&self.settings.obs_runtime);
         }
+        // Preview capture follows selection even when its panel is outside the scroll area.
+        self.update_preview(ctx);
         #[cfg(feature = "ui-smoke")]
         self.snapshot(ctx);
         if self.active() && ctx.input(|i| i.viewport().close_requested()) {

@@ -10,3 +10,4 @@ pub mod settings;
 pub mod windows;
 
 pub mod obs_backend;
+pub mod preview;

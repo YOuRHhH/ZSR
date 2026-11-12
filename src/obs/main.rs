@@ -3,10 +3,11 @@ mod audio;
 mod audio_meter;
 mod encoding;
 mod engine;
+mod preview;
 mod runtime;
 mod source;
 use std::io::{BufRead, Write};
-/// Emit only JSON on stdout; native OBS diagnostics are redirected to stderr.
+/// Emit JSON events; preview mode uses framed RGBA on stdout and JSON for terminal errors.
 fn emit(value: serde_json::Value) {
     println!("{value}");
     let _ = std::io::stdout().flush();
@@ -35,6 +36,14 @@ fn run() -> Result<(), String> {
         serde_json::from_value(value["request"].clone()).map_err(|e| e.to_string())?;
     // Validate again at the process boundary before passing dimensions and rates into native code.
     request.validate()?;
+    if args.get(2).is_some_and(|a| a == "preview") {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = std::io::stdin().lock().lines().next();
+            let _ = tx.send(());
+        });
+        return preview::run(&rt, &request, rx);
+    }
     let output = value["output"]
         .as_str()
         .ok_or("output path missing")?

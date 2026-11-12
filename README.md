@@ -49,6 +49,7 @@ Re-stage the helper after changing its code. You can override runtime discovery 
 ## Recording
 
 - Choose **Display**, **Region**, or **Application window**, then **Start recording**.
+- The in-app **Capture preview** shows the selected source and crop before recording. It refreshes at 5 fps, creates no recording file, and pauses while recording or minimized.
 - Region selection shows your desktop, temporarily minimizes ZSR, and restores it after confirmation. The confirmed border stays visible.
 - Enable desktop audio to capture the system default playback device, and/or select a microphone from the automatically detected list. Windows audio uses OBS WASAPI loopback and microphone capture.
 - Choose **Mixed single track** to combine enabled sources, or **Separate audio tracks** for desktop audio on track 1 and microphone on track 2 in the same MP4. With only one source enabled, one track is saved. Most players play one track at a time; choose mixed mode for playback of both together. Desktop capture starts disabled so existing users do not unexpectedly record system sound.
