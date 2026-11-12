@@ -1,4 +1,5 @@
 pub mod audio;
+pub mod brush;
 #[cfg(feature = "legacy-ffmpeg")]
 pub mod bundled_backend;
 pub mod i18n;

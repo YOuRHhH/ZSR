@@ -20,11 +20,14 @@ struct Recording<'a> {
     audio: Option<super::audio::Audio<'a>>,
     source: Ptr,
     scene: Ptr,
+    brush: Option<super::brush::Overlay<'a>>,
     stop_state: Box<StopState>,
 }
 impl Drop for Recording<'_> {
     /// Detach global channels before releasing scenes, sources and encoders.
     fn drop(&mut self) {
+        // Stop render callbacks before releasing their capture source or OBS runtime.
+        drop(self.brush.take());
         unsafe {
             let a = &self.rt.api;
             if !self.output.is_null() {
@@ -73,6 +76,7 @@ pub fn record(
     request: Request,
     path: &str,
     stop: Receiver<()>,
+    ink: super::brush::Updates,
 ) -> Result<(), String> {
     let a = &rt.api;
     let size = match &request.capture {
@@ -124,6 +128,7 @@ pub fn record(
         audio: None,
         source: null_mut(),
         scene: null_mut(),
+        brush: None,
         stop_state: Box::new(StopState {
             code: AtomicI32::new(i32::MIN),
             get: a.calldata_get_data,
@@ -167,6 +172,15 @@ pub fn record(
                 info.base_width,
                 info.base_height,
             )?;
+        }
+        if matches!(request.capture, Capture::Window(_)) {
+            rec.brush = Some(super::brush::Overlay::new(
+                a,
+                rec.source,
+                info.base_width,
+                info.base_height,
+                ink,
+            ));
         }
         rec.audio = Some(super::audio::Audio::new(rt, &request.settings)?);
         let data = rt.data(&serde_json::json!({"path":path,"allow_overwrite":false}));

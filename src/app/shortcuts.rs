@@ -4,19 +4,28 @@ use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState, hotkey:
 use zsr::i18n::tr;
 mod capture;
 
+/// Keep key capture and dispatch tied to the same action order.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Action {
+    Start,
+    Stop,
+    Brush,
+}
+
 pub(super) struct Shortcuts {
     manager: Option<GlobalHotKeyManager>,
     keys: Vec<HotKey>,
     start: String,
     stop: String,
+    brush: String,
     error: Option<String>,
-    capturing: Option<bool>,
+    capturing: Option<Action>,
     suspended: bool,
 }
 
 impl Shortcuts {
     /// Create OS-wide bindings on the UI thread, retaining errors for the settings panel.
-    pub(super) fn new(start: String, stop: String) -> Self {
+    pub(super) fn new(start: String, stop: String, brush: String) -> Self {
         let manager = GlobalHotKeyManager::new();
         let error = manager.as_ref().err().map(ToString::to_string);
         let mut shortcuts = Self {
@@ -24,6 +33,7 @@ impl Shortcuts {
             keys: Vec::new(),
             start,
             stop,
+            brush,
             error,
             capturing: None,
             suspended: false,
@@ -34,9 +44,9 @@ impl Shortcuts {
         shortcuts
     }
 
-    /// Replace both bindings together and restore the old pair if registration fails.
+    /// Replace all bindings together and restore the previous set if registration fails.
     fn apply(&mut self) -> Result<(), String> {
-        let next = parse_pair(&self.start, &self.stop)?;
+        let next = parse_bindings(&self.start, &self.stop, &self.brush)?;
         let manager = self
             .manager
             .as_ref()
@@ -62,13 +72,17 @@ impl Shortcuts {
 }
 
 /// Parse distinct nonempty accelerators before changing any system registrations.
-fn parse_pair(start: &str, stop: &str) -> Result<[HotKey; 2], String> {
-    let start: HotKey = start.trim().parse().map_err(|e| format!("{e}"))?;
-    let stop: HotKey = stop.trim().parse().map_err(|e| format!("{e}"))?;
-    if start.id() == stop.id() {
-        return Err("Start and stop shortcuts must differ.".into());
+fn parse_bindings(start: &str, stop: &str, brush: &str) -> Result<[HotKey; 3], String> {
+    let parse = |value: &str| value.trim().parse::<HotKey>().map_err(|e| e.to_string());
+    let keys = [parse(start)?, parse(stop)?, parse(brush)?];
+    if keys
+        .iter()
+        .enumerate()
+        .any(|(i, key)| keys[..i].iter().any(|old| old.id() == key.id()))
+    {
+        return Err("Start, stop and brush shortcuts must differ.".into());
     }
-    Ok([start, stop])
+    Ok(keys)
 }
 
 impl Drop for Shortcuts {
@@ -85,7 +99,7 @@ impl App {
     pub(super) fn poll_shortcuts(&mut self, ctx: &egui::Context) {
         let suppress = self.shortcuts.capture_input(ctx);
         while let Ok(event) = GlobalHotKeyEvent::receiver().try_recv() {
-            if suppress || event.state != HotKeyState::Released || self.shortcuts.keys.len() != 2 {
+            if suppress || event.state != HotKeyState::Released || self.shortcuts.keys.len() != 3 {
                 continue;
             }
             if event.id == self.shortcuts.keys[1].id() {
@@ -93,6 +107,8 @@ impl App {
                     session.stop();
                     self.state = State::Stopping;
                 }
+            } else if event.id == self.shortcuts.keys[2].id() {
+                self.toggle_brush();
             } else if event.id == self.shortcuts.keys[0].id()
                 && !self.active()
                 && !self.checking
@@ -108,15 +124,17 @@ impl App {
         }
     }
 
-    /// Capture key combinations and persist only successfully applied shortcut pairs.
+    /// Capture key combinations and persist only successfully applied shortcuts.
     pub(in crate::app) fn shortcut_controls(&mut self, ui: &mut egui::Ui) {
         let lang = self.settings.language;
         ui.separator();
         ui.label(tr(lang, "shortcuts"));
         ui.label(tr(lang, "shortcut_start"));
-        self.shortcuts.capture_button(ui, true, lang);
+        self.shortcuts.capture_button(ui, Action::Start, lang);
         ui.label(tr(lang, "shortcut_stop"));
-        self.shortcuts.capture_button(ui, false, lang);
+        self.shortcuts.capture_button(ui, Action::Stop, lang);
+        ui.label(tr(lang, "shortcut_brush"));
+        self.shortcuts.capture_button(ui, Action::Brush, lang);
         ui.small(tr(lang, "shortcut_hint"));
         if ui
             .add_enabled(
@@ -129,6 +147,7 @@ impl App {
                 Ok(()) => {
                     self.settings.start_shortcut = self.shortcuts.start.clone();
                     self.settings.stop_shortcut = self.shortcuts.stop.clone();
+                    self.settings.brush_shortcut = self.shortcuts.brush.clone();
                     self.shortcuts.error = None;
                 }
                 Err(error) => self.shortcuts.error = Some(error),
@@ -142,11 +161,12 @@ impl App {
 
 #[cfg(test)]
 mod tests {
-    /// Invalid and duplicate bindings cannot replace a working pair.
+    /// Invalid and duplicate bindings cannot replace a working set.
     #[test]
-    fn validates_pair_before_registration() {
-        assert!(super::parse_pair("Ctrl+Shift+F9", "Ctrl+Shift+F10").is_ok());
-        assert!(super::parse_pair("Ctrl+F9", "Ctrl+F9").is_err());
-        assert!(super::parse_pair("", "garbage").is_err());
+    fn validates_all_bindings_before_registration() {
+        assert!(super::parse_bindings("Ctrl+Shift+F9", "Ctrl+Shift+F10", "Ctrl+Shift+B").is_ok());
+        assert!(super::parse_bindings("Ctrl+F9", "Ctrl+F9", "Ctrl+B").is_err());
+        assert!(super::parse_bindings("Ctrl+F9", "Ctrl+F10", "Ctrl+F10").is_err());
+        assert!(super::parse_bindings("", "garbage", "Ctrl+B").is_err());
     }
 }

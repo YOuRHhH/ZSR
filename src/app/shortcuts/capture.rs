@@ -1,4 +1,4 @@
-use super::Shortcuts;
+use super::{Action, Shortcuts};
 use eframe::egui;
 use global_hotkey::hotkey::HotKey;
 use zsr::{i18n::tr, settings::Language};
@@ -9,14 +9,16 @@ impl Shortcuts {
         self.capturing = None;
     }
 
-    /// Arm a start/stop capture button, temporarily releasing OS shortcuts so key presses reach egui.
-    pub(super) fn capture_button(&mut self, ui: &mut egui::Ui, start: bool, language: Language) {
-        let label = if self.capturing == Some(start) {
+    /// Arm a shortcut capture button, temporarily releasing OS shortcuts so key presses reach egui.
+    pub(super) fn capture_button(&mut self, ui: &mut egui::Ui, action: Action, language: Language) {
+        let label = if self.capturing == Some(action) {
             tr(language, "shortcut_listening")
-        } else if start {
-            &self.start
         } else {
-            &self.stop
+            match action {
+                Action::Start => &self.start,
+                Action::Stop => &self.stop,
+                Action::Brush => &self.brush,
+            }
         };
         if ui.button(label).clicked() {
             if !self.suspended {
@@ -28,7 +30,7 @@ impl Shortcuts {
                 }
                 self.suspended = true;
             }
-            self.capturing = Some(start);
+            self.capturing = Some(action);
             self.error = None;
         }
     }
@@ -38,7 +40,7 @@ impl Shortcuts {
         if !self.suspended {
             return false;
         }
-        if let Some(start) = self.capturing {
+        if let Some(action) = self.capturing {
             if !ctx.input(|i| i.focused) {
                 self.capturing = None;
             } else {
@@ -57,10 +59,10 @@ impl Shortcuts {
                         }
                         match chord(key, modifiers) {
                             Ok(value) => {
-                                if start {
-                                    self.start = value;
-                                } else {
-                                    self.stop = value;
+                                match action {
+                                    Action::Start => self.start = value,
+                                    Action::Stop => self.stop = value,
+                                    Action::Brush => self.brush = value,
                                 }
                                 self.capturing = None;
                                 self.error = None;

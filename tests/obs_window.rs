@@ -161,6 +161,108 @@ fn obs_records_selected_window_pixels() {
     );
 }
 
+/// Exercise IPC/compositing with multiple shapes/colors, then clear back to source pixels.
+#[test]
+#[ignore = "records an owned window; needs OBS runtime and FFmpeg for decoding"]
+fn obs_records_and_clears_window_brush() {
+    let (_fixture, target) = fixture("brush");
+    let area = zsr::brush::desktop::bounds(&Capture::Window(target.clone())).unwrap();
+    assert_eq!((area.width, area.height), (640, 360));
+    let folder = tempfile::tempdir().unwrap();
+    let session = Session::start(Request {
+        settings: Settings {
+            destination: folder.path().into(),
+            microphone: false,
+            desktop_audio: false,
+            ..Default::default()
+        },
+        capture: Capture::Window(target),
+    })
+    .unwrap();
+    let mut cleared = false;
+    let path = loop {
+        match session
+            .events
+            .recv_timeout(Duration::from_secs(45))
+            .unwrap()
+        {
+            Event::Started => session.set_ink(zsr::brush::Ink {
+                strokes: vec![
+                    zsr::brush::Stroke {
+                        points: (0..101).map(|i| [0.1 + i as f32 * 0.008, 0.5]).collect(),
+                        width: 0.08,
+                        tool: zsr::brush::Tool::Freehand,
+                        color: zsr::brush::COLOR,
+                    },
+                    zsr::brush::Stroke {
+                        points: vec![[0.25, 0.2], [0.75, 0.8]],
+                        width: 0.04,
+                        tool: zsr::brush::Tool::Rectangle,
+                        color: [30, 220, 90],
+                    },
+                    zsr::brush::Stroke {
+                        points: vec![[0.3, 0.3], [0.7, 0.7]],
+                        width: 0.04,
+                        tool: zsr::brush::Tool::Ellipse,
+                        color: [0, 0, 0],
+                    },
+                    zsr::brush::Stroke {
+                        points: vec![[0.1, 0.9], [0.9, 0.9]],
+                        width: 0.04,
+                        tool: zsr::brush::Tool::Arrow,
+                        color: [40, 200, 255],
+                    },
+                ],
+            }),
+            Event::Progress { seconds, .. } if seconds >= 4.0 => session.stop(),
+            Event::Progress { seconds, .. } if seconds >= 2.0 && !cleared => {
+                session.set_ink(zsr::brush::Ink::default());
+                cleared = true;
+            }
+            Event::Saved(path) => break path,
+            Event::Failed { detail, .. } => panic!("{detail}"),
+            _ => {}
+        }
+    };
+    drop(session);
+    for (x, y, expected) in [
+        (500, 180, zsr::brush::COLOR),
+        (160, 180, [30, 220, 90]),
+        (320, 108, [0, 0, 0]),
+        (320, 324, [40, 200, 255]),
+    ] {
+        for (time, expect_ink) in [("1.0", true), ("3.0", false)] {
+            let pixels = zsr::platform::command("ffmpeg")
+                .args(["-v", "error", "-ss", time, "-i"])
+                .arg(&path)
+                .args([
+                    "-frames:v",
+                    "1",
+                    "-vf",
+                    &format!("crop=2:2:{x}:{y},scale=1:1"),
+                    "-pix_fmt",
+                    "rgb24",
+                    "-f",
+                    "rawvideo",
+                    "-",
+                ])
+                .output()
+                .unwrap();
+            assert!(pixels.status.success());
+            let rgb = &pixels.stdout;
+            assert_eq!(rgb.len(), 3);
+            let matches = rgb
+                .iter()
+                .zip(expected)
+                .all(|(&actual, expected)| actual.abs_diff(expected) < 35);
+            assert_eq!(
+                matches, expect_ink,
+                "unexpected brush pixel at {time}s, ({x}, {y}): {rgb:?}, expected {expected:?}"
+            );
+        }
+    }
+}
+
 /// Exercise real preview pixels, helper teardown/restart, scaling, and absence of media files.
 #[test]
 #[ignore = "opens an animated test window; needs a staged OBS runtime"]

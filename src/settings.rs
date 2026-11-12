@@ -28,6 +28,8 @@ pub struct Settings {
     pub hardware_encoding: bool,
     pub resolution: crate::resolution::Resolution,
     pub cursor: bool,
+    /// Preview capture is opt-in, including when loading preferences from older versions.
+    pub preview_enabled: bool,
     pub microphone: bool,
     pub desktop_audio: bool,
     pub audio_tracks: AudioTracks,
@@ -39,6 +41,8 @@ pub struct Settings {
     pub obs_runtime: String,
     pub start_shortcut: String,
     pub stop_shortcut: String,
+    // Serde defaults preserve existing preferences when brush controls are introduced.
+    pub brush_shortcut: String,
 }
 
 impl Default for Settings {
@@ -62,6 +66,7 @@ impl Default for Settings {
             hardware_encoding: true,
             resolution: Default::default(),
             cursor: true,
+            preview_enabled: false,
             microphone: false,
             desktop_audio: false,
             audio_tracks: AudioTracks::Mixed,
@@ -71,6 +76,7 @@ impl Default for Settings {
             obs_runtime: crate::obs_backend::default_runtime(),
             start_shortcut: "Ctrl+Shift+F9".into(),
             stop_shortcut: "Ctrl+Shift+F10".into(),
+            brush_shortcut: "Ctrl+Shift+B".into(),
         }
     }
 }
@@ -115,5 +121,20 @@ impl Settings {
             return Err("An audio device is required".into());
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod brush_tests {
+    #[test]
+    fn old_preferences_gain_default_brush_and_custom_binding_round_trips() {
+        let mut settings: super::Settings =
+            serde_json::from_str(r#"{"start_shortcut":"Alt+F9"}"#).unwrap();
+        assert_eq!(settings.brush_shortcut, "Ctrl+Shift+B");
+        assert_eq!(settings.start_shortcut, "Alt+F9");
+        settings.brush_shortcut = "Alt+Shift+D".into();
+        let saved = serde_json::to_string(&settings).unwrap();
+        let loaded: super::Settings = serde_json::from_str(&saved).unwrap();
+        assert_eq!(loaded.brush_shortcut, "Alt+Shift+D");
     }
 }

@@ -6,6 +6,7 @@ fn main() {
     println!("cargo:rerun-if-changed=native/display.h");
     println!("cargo:rerun-if-changed=native/windows.c");
     println!("cargo:rerun-if-changed=native/region_marker.c");
+    println!("cargo:rerun-if-changed=native/brush.c");
     for file in [
         "picker.h",
         "picker_window.c",
@@ -25,6 +26,7 @@ fn main() {
         .file("native/display.c")
         .file("native/windows.c")
         .file("native/region_marker.c")
+        .file("native/brush.c")
         .file("native/picker_window.c")
         .file("native/picker_input.c")
         .file("native/picker_paint.c")

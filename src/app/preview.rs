@@ -18,9 +18,10 @@ pub(super) struct Preview {
 }
 
 impl App {
-    /// Refresh only the selected source; discard old pixels immediately on selection changes.
+    /// Capture only after opting in; disabling also releases the worker and cached pixels.
     pub(super) fn update_preview(&mut self, ctx: &egui::Context) {
-        if self.active()
+        if !self.settings.preview_enabled
+            || self.active()
             || self.picker.is_some()
             || self.checking
             || ctx.input(|i| i.viewport().minimized == Some(true))

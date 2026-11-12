@@ -49,13 +49,14 @@ Re-stage the helper after changing its code. You can override runtime discovery 
 ## Recording
 
 - Choose **Display**, **Region**, or **Application window**, then **Start recording**.
-- The in-app **Capture preview** shows the selected source and crop before recording. It refreshes at 5 fps, creates no recording file, and pauses while recording or minimized.
+- **Capture preview** is off by default. Enable it in **Settings → General → Enable capture preview**; the preference is saved automatically. When enabled, it shows the selected source and crop before recording, refreshes at 5 fps, creates no recording file, and pauses while recording or minimized. Turning it off hides the preview and stops preview capture.
 - Region selection shows your desktop, temporarily minimizes ZSR, and restores it after confirmation. The confirmed border stays visible.
 - Enable desktop audio to capture the system default playback device, and/or select a microphone from the automatically detected list. Windows audio uses OBS WASAPI loopback and microphone capture.
 - Choose **Mixed single track** to combine enabled sources, or **Separate audio tracks** for desktop audio on track 1 and microphone on track 2 in the same MP4. With only one source enabled, one track is saved. Most players play one track at a time; choose mixed mode for playback of both together. Desktop capture starts disabled so existing users do not unexpectedly record system sound.
 - Output sizes include Original, 480p, 720p, 1080p, 1440p and 2160p, at 30 or 60 fps. Content fits within the output without stretching.
 - Windows tries OBS AMF/NVENC/QSV hardware H.264 encoders and falls back to x264. The settings checkbox can force software encoding.
 - **Stop and save** finalizes a native OBS hybrid MP4. Interrupted output is retained as `.partial.mp4`; it is not presented as a successful recording.
+- While recording, press **Ctrl+Shift+B** to enable drawing and open a separate, movable **Drawing tools** panel. The panel does not appear in the main application interface or automatically when recording starts. Choose freehand, line, arrow, rectangle or ellipse, then a preset or custom color; changes apply to new drawings. Customize the shortcut in **Settings → Global shortcuts**, then apply. Drag on the screen to draw, and change tools directly in the floating panel. Press the shortcut again, close the panel, or select **Exit and clear** to hide the panel, exit drawing and clear the canvas. **Esc** hides the panel and returns to pointer mode while keeping marks; the shortcut reopens the tools. Use the panel's **Undo** / **Clear drawings** buttons, or **Ctrl+Z** / **Delete** on the drawing canvas. Marks are included in display, region, and application-window recordings; stopping hides the tools and clears all marks. Supports Windows and Linux/X11 with a compositor; Wayland recording remains unsupported.
 - The **Recordings** list opens completed files or their folder. Language, output preferences and press-to-enter global shortcuts remain in Settings.
 - Native OBS logs are saved beside recordings. They stay local and may contain device names and paths.
 

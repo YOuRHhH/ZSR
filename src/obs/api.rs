@@ -3,6 +3,9 @@ use std::ffi::{c_char, c_void};
 pub type Ptr = *mut c_void;
 pub type MeterCallback = unsafe extern "C" fn(Ptr, *const f32, *const f32, *const f32);
 pub type VideoCallback = unsafe extern "C" fn(Ptr, *mut VideoData);
+// OBS vec4 contains an SSE union and therefore requires 16-byte alignment.
+#[repr(C, align(16))]
+pub struct Vec4(pub [f32; 4]);
 /// Packed video callback layout from libobs/media-io/video-io.h (MAX_AV_PLANES = 8).
 #[repr(C)]
 pub struct VideoData {
@@ -64,6 +67,24 @@ macro_rules! api {
 api! {
     base_set_log_handler(Ptr,Ptr) -> ();
     obs_get_version() -> u32;
+    obs_add_main_rendered_callback(unsafe extern "C" fn(Ptr),Ptr) -> ();
+    obs_remove_main_rendered_callback(unsafe extern "C" fn(Ptr),Ptr) -> ();
+    obs_get_base_effect(i32) -> Ptr;
+    gs_effect_get_param_by_name(Ptr,*const c_char) -> Ptr;
+    gs_effect_set_vec4(Ptr,*const Vec4) -> ();
+    gs_effect_loop(Ptr,*const c_char) -> bool;
+    gs_matrix_push() -> ();
+    gs_matrix_pop() -> ();
+    gs_matrix_identity() -> ();
+    gs_render_start(bool) -> ();
+    gs_render_save() -> Ptr;
+    gs_vertexbuffer_destroy(Ptr) -> ();
+    gs_load_vertexbuffer(Ptr) -> ();
+    gs_load_indexbuffer(Ptr) -> ();
+    gs_draw(i32,u32,u32) -> ();
+    obs_enter_graphics() -> ();
+    obs_leave_graphics() -> ();
+    gs_vertex2f(f32,f32) -> ();
     obs_startup(*const c_char,*const c_char,Ptr) -> bool;
     obs_wait_for_destroy_queue() -> bool;
     obs_shutdown() -> ();

@@ -9,9 +9,12 @@ fn main() -> eframe::Result {
         vsync: true,
         centered: true,
         viewport: eframe::egui::ViewportBuilder::default()
+            // X11 brush viewports share the root GL config and require alpha support.
+            // Windows uses a native layered brush, keeping its main renderer opaque.
             .with_transparent(
-                cfg!(feature = "ui-smoke")
-                    && std::env::var_os("ZSR_UI_TRANSPARENT_BASELINE").is_some(),
+                !cfg!(windows)
+                    || (cfg!(feature = "ui-smoke")
+                        && std::env::var_os("ZSR_UI_TRANSPARENT_BASELINE").is_some()),
             )
             .with_title("ZSR")
             .with_icon(app_icon::load())

@@ -13,6 +13,7 @@ pub(super) fn record(
     request: Request,
     stop: Receiver<()>,
     events: &Sender<Event>,
+    ink: std::sync::Arc<std::sync::Mutex<Option<crate::brush::Ink>>>,
 ) -> Result<(), (String, Option<PathBuf>)> {
     let root = crate::obs_backend::resolve(&request.settings.obs_runtime).map_err(|e| (e, None))?;
     fs::create_dir_all(&request.settings.destination).map_err(|e| (e.to_string(), None))?;
@@ -113,6 +114,20 @@ pub(super) fn record(
         if stopping.is_some_and(|t| t.elapsed() > Duration::from_secs(20)) {
             failure = Some("OBS shutdown timed out".into());
             let _ = child.kill();
+        }
+        // Stop always takes priority over drawing updates; snapshots are coalesced at 20 Hz.
+        if started
+            && stopping.is_none()
+            && let Some(ink) = ink.lock().unwrap().take()
+        {
+            let command = serde_json::json!({"ink": ink});
+            if writeln!(input, "{command}")
+                .and_then(|_| input.flush())
+                .is_err()
+            {
+                failure = Some("OBS brush input failed".into());
+                let _ = child.kill();
+            }
         }
         match child.try_wait() {
             Ok(Some(status)) => break Some(status),

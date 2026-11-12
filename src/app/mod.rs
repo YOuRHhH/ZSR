@@ -1,4 +1,5 @@
 mod appearance;
+mod brush;
 mod controller;
 mod file_opener;
 mod preferences;
@@ -66,6 +67,7 @@ pub struct App {
     picker: Option<region::PickerWindow>,
     region_marker: region::RegionMarker,
     preview: preview::Preview,
+    brush: brush::Brush,
     state: State,
     session: Option<Session>,
     frames: u64,
@@ -85,6 +87,14 @@ pub struct App {
 impl App {
     /// Initialize preferences, global shortcuts, and asynchronous device discovery.
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        // X11 keeps an alpha-capable shared GL config but an opaque main window.
+        if !(cfg!(windows)
+            || cfg!(feature = "ui-smoke")
+                && std::env::var_os("ZSR_UI_TRANSPARENT_BASELINE").is_some())
+        {
+            cc.egui_ctx
+                .send_viewport_cmd(egui::ViewportCommand::Transparent(false));
+        }
         let custom_title_bar = appearance::configure_title_bar(cc);
         let font_missing = !appearance::configure(&cc.egui_ctx);
         let loaded = Settings::load();
@@ -124,6 +134,7 @@ impl App {
             shortcuts: shortcuts::Shortcuts::new(
                 settings.start_shortcut.clone(),
                 settings.stop_shortcut.clone(),
+                settings.brush_shortcut.clone(),
             ),
             settings,
             // Allow the screenshot harness to inspect preferences without UI automation.
@@ -150,6 +161,7 @@ impl App {
             picker: None,
             region_marker: Default::default(),
             preview: Default::default(),
+            brush: Default::default(),
             state: State::Idle,
             session: None,
             frames: 0,
@@ -212,7 +224,7 @@ impl eframe::App for App {
         if !self.active() && self.picker.is_none() && self.settings.microphone {
             self.audio.refresh_if_due(&self.settings.obs_runtime);
         }
-        // Preview capture follows selection even when its panel is outside the scroll area.
+        // The opt-in preview follows selection and releases capture whenever it is disabled.
         self.update_preview(ctx);
         #[cfg(feature = "ui-smoke")]
         self.snapshot(ctx);
@@ -239,6 +251,7 @@ impl eframe::App for App {
             };
             self.region_marker.update(ctx, target);
         }
+        self.update_brush(ctx);
         self.save_if_changed();
         ctx.request_repaint_after(Duration::from_millis(100));
     }
@@ -247,12 +260,16 @@ impl eframe::App for App {
             let _ = self.settings.save();
         }
     }
-    /// Avoid transparent OpenGL composition for the main recording controls.
+    /// Native Windows drawing needs no GL transparency; X11 overlays need alpha clearing.
+    /// Never lock overlay state from this re-entrant renderer callback.
     fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
-        #[cfg(feature = "ui-smoke")]
-        if std::env::var_os("ZSR_UI_TRANSPARENT_BASELINE").is_some() {
-            return [0.0; 4];
+        if cfg!(windows)
+            && !(cfg!(feature = "ui-smoke")
+                && std::env::var_os("ZSR_UI_TRANSPARENT_BASELINE").is_some())
+        {
+            egui::Rgba::from(visuals.panel_fill).to_array()
+        } else {
+            [0.0; 4]
         }
-        eframe::egui::Rgba::from(visuals.panel_fill).to_array()
     }
 }

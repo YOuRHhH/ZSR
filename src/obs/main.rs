@@ -1,6 +1,7 @@
 mod api;
 mod audio;
 mod audio_meter;
+mod brush;
 mod encoding;
 mod engine;
 mod preview;
@@ -49,11 +50,24 @@ fn run() -> Result<(), String> {
         .ok_or("output path missing")?
         .to_owned();
     let (tx, rx) = std::sync::mpsc::channel();
+    let ink = brush::Updates::default();
+    let incoming = std::sync::Arc::clone(&ink);
     std::thread::spawn(move || {
-        let _ = std::io::stdin().lock().lines().next();
+        // Drawing commands no longer terminate a recording; explicit stop and EOF still do.
+        for line in std::io::stdin().lock().lines().map_while(Result::ok) {
+            if line.trim() == "stop" {
+                break;
+            }
+            if let Ok(value) = serde_json::from_str::<serde_json::Value>(&line)
+                && let Ok(ink) = serde_json::from_value::<zsr::brush::Ink>(value["ink"].clone())
+                && ink.valid()
+            {
+                *incoming.lock().unwrap() = Some(ink);
+            }
+        }
         let _ = tx.send(());
     });
-    engine::record(&rt, request, &output, rx)
+    engine::record(&rt, request, &output, rx, ink)
 }
 /// Surface initialization failures to the parent without a console dialog.
 fn main() {

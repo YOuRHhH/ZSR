@@ -43,14 +43,16 @@ impl App {
                 ui.small(tr(lang, "privacy"));
             });
         });
-        // Put the selected capture above Start/Stop so users can inspect it before recording.
-        egui::TopBottomPanel::top("capture_preview").show(ctx, |ui| {
-            ui.add_space(8.0);
-            egui::Frame::group(ui.style()).show(ui, |ui| {
-                self.preview_controls(ui);
+        // Reserve preview space only after the user enables it in General settings.
+        if self.settings.preview_enabled {
+            egui::TopBottomPanel::top("capture_preview").show(ctx, |ui| {
+                ui.add_space(8.0);
+                egui::Frame::group(ui.style()).show(ui, |ui| {
+                    self.preview_controls(ui);
+                });
+                ui.add_space(8.0);
             });
-            ui.add_space(8.0);
-        });
+        }
         // Keep Start/Stop and the recording indicator visible while settings scroll.
         egui::TopBottomPanel::top("recording_status").show(ctx, |ui| {
             ui.add_space(8.0);

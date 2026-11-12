@@ -45,6 +45,18 @@ impl App {
                             });
                     });
                     ui.checkbox(&mut self.settings.cursor, tr(lang, "cursor"));
+                    if ui
+                        .checkbox(
+                            &mut self.settings.preview_enabled,
+                            tr(lang, "preview_enabled"),
+                        )
+                        .on_hover_text(tr(lang, "preview_enabled_hint"))
+                        .changed()
+                        && !self.settings.preview_enabled
+                    {
+                        // Stop an active preview immediately instead of waiting for the next frame.
+                        self.preview = Default::default();
+                    }
                     ui.separator();
                     ui.heading(tr(lang, "output"));
                     self.output_preferences(ui);

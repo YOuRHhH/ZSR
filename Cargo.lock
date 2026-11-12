@@ -4101,6 +4101,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "x11rb",
 ]
 
 [[package]]

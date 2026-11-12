@@ -35,6 +35,10 @@ image = { version = "0.25", default-features = false, features = ["png"], option
 global-hotkey = "0.7"
 raw-window-handle = "0.6"
 
+# Reuse winit's X11 protocol client for safe window geometry/focus queries on Linux.
+[target.'cfg(target_os = "linux")'.dependencies]
+x11rb = "0.13"
+
 [build-dependencies]
 cc = "1"
 embed-resource = "3"

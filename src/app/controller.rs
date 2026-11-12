@@ -135,6 +135,8 @@ impl App {
                 .input
                 .clone();
         }
+        // Remember the exact capture target for brush placement throughout this session.
+        self.brush = super::brush::Brush::new(capture.clone());
         let request = Request { settings, capture };
         // Release the idle capture helper before the recording session takes over.
         self.preview = Default::default();
